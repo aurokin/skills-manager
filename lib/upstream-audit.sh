@@ -46,52 +46,72 @@ load_coverage_manifest_into_maps() {
 
 collect_upstream_skill_names() {
     local repo="$1"
-    local tmp_dir repo_dir skills_root skill_file skill_name frontmatter_name
+    local tmp_dir repo_dir skill_file skill_name frontmatter_name
     local skill_file_count=0
+    local has_root_skill=0
 
     tmp_dir="$(mktemp -d)"
     repo_dir="$tmp_dir/repo"
-    skills_root="$repo_dir/skills"
 
     if ! git clone --depth 1 "https://github.com/${repo}.git" "$repo_dir" >/dev/null 2>&1; then
         rm -rf "$tmp_dir"
         return 1
     fi
 
+    # The skills CLI treats a root SKILL.md as the canonical single-skill
+    # layout (see `skills add --full-depth`). When present, it is the only
+    # skill the CLI installs by default, so we mirror that here.
+    if [ -f "$repo_dir/SKILL.md" ]; then
+        has_root_skill=1
+    fi
+
+    # Otherwise enumerate every SKILL.md anywhere in the working tree so we
+    # cover both `skills/<name>/SKILL.md` and agent-scoped layouts like
+    # `.claude/skills/<name>/SKILL.md` (used by dedene/raindrop-cli).
     while IFS= read -r -d '' skill_file; do
+        if [ "$has_root_skill" -eq 1 ] && [ "$skill_file" != "$repo_dir/SKILL.md" ]; then
+            continue
+        fi
         skill_file_count=$((skill_file_count + 1))
         skill_name="$(basename "$(dirname "$skill_file")")"
-        frontmatter_name="$(
-            awk '
-                BEGIN { in_yaml = 0 }
-                /^---$/ {
-                    if (in_yaml == 0) {
-                        in_yaml = 1
-                        next
-                    }
-                    exit
-                }
-                in_yaml && /^name:[[:space:]]*/ {
-                    sub(/^name:[[:space:]]*/, "")
-                    gsub(/^["'"'"']|["'"'"']$/, "")
-                    print
-                    exit
-                }
-            ' "$skill_file"
-        )"
+        if [ "$skill_file" = "$repo_dir/SKILL.md" ]; then
+            skill_name="$(basename "$repo")"
+        fi
+        frontmatter_name="$(extract_skill_frontmatter_name "$skill_file")"
         if [ -n "$frontmatter_name" ]; then
             skill_name="$frontmatter_name"
         fi
         printf '%s\n' "$skill_name"
-    done < <(find "$skills_root" -mindepth 2 -maxdepth 2 -name SKILL.md -print0 2>/dev/null)
+    done < <(find "$repo_dir" -type d -name .git -prune -o -type f -name SKILL.md -print0 2>/dev/null)
 
     if [ "$skill_file_count" -eq 0 ]; then
-        audit_warn "No skills/*/SKILL.md files found in $repo; repo layout may have changed"
+        audit_warn "No SKILL.md files found in $repo; repo layout may have changed"
         rm -rf "$tmp_dir"
         return 1
     fi
 
     rm -rf "$tmp_dir"
+}
+
+extract_skill_frontmatter_name() {
+    local skill_file="$1"
+
+    awk '
+        BEGIN { in_yaml = 0 }
+        /^---$/ {
+            if (in_yaml == 0) {
+                in_yaml = 1
+                next
+            }
+            exit
+        }
+        in_yaml && /^name:[[:space:]]*/ {
+            sub(/^name:[[:space:]]*/, "")
+            gsub(/^["'"'"']|["'"'"']$/, "")
+            print
+            exit
+        }
+    ' "$skill_file"
 }
 
 collect_upstream_skill_names_cached() {
