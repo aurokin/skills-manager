@@ -271,9 +271,10 @@ Current local skills:
 - `agents-md`
 - `to-prd` — forked from `mattpocock/to-prd`
 - `to-issues` — forked from `mattpocock/to-issues`
+- `split-to-prs` — forked from Cursor's `split-to-prs` skill
 
-The `to-prd` and `to-issues` skills are maintained here as local forks rather
-than installed upstream packages.
+The `to-prd`, `to-issues`, and `split-to-prs` skills are maintained here as
+local forks rather than installed upstream packages.
 
 To add a new local skill:
 
