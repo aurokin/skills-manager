@@ -32,15 +32,14 @@ fi
 
 for section in \
     "# Maintaining AGENTS.md" \
+    "## Workflow" \
     "## File Setup" \
-    "## Before Writing" \
+    "## Default Sections" \
+    "## Package Manager" \
+    "## Key Conventions" \
     "## Writing Rules" \
-    "### Package Manager" \
-    "### File-Scoped Commands" \
-    "### Key Conventions" \
-    "## Optional Sections" \
-    "## Anti-Patterns" \
-    "## Example Structure"
+    "## External Reference Rules" \
+    "## Anti-Patterns"
 do
     if ! grep -Fq "$section" "$SKILL_FILE"; then
         fail "expected section missing: $section"

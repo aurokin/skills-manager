@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="$REPO_DIR/skills/agents-md"
 TARGET_FILE="$TARGET_DIR/SKILL.md"
-UPSTREAM_URL="https://raw.githubusercontent.com/getsentry/skills/main/plugins/sentry-skills/skills/agents-md/SKILL.md"
+UPSTREAM_URL="https://raw.githubusercontent.com/getsentry/skills/main/skills/agents-md/SKILL.md"
 
 warn() {
     echo "WARN: $*" >&2
@@ -33,50 +33,35 @@ main() {
     patched_tmp="$(mktemp)"
     trap 'rm -f "${upstream_tmp:-}" "${patched_tmp:-}"' EXIT
 
-    curl -fsSL "$UPSTREAM_URL" -o "$upstream_tmp"
+    if ! curl -fsSL "$UPSTREAM_URL" -o "$upstream_tmp"; then
+        echo "Failed to fetch upstream agents-md skill: $UPSTREAM_URL" >&2
+        exit 1
+    fi
 
     local required_count
-    required_count="$(grep -c '^### Commit Attribution$' "$upstream_tmp" || true)"
+    required_count="$(grep -c '^## Commit Attribution$' "$upstream_tmp" || true)"
 
-    if [ "$required_count" -ne 1 ] || ! grep -q '^## Example Structure$' "$upstream_tmp"; then
-        warn "upstream structure changed; expected required and example headings were not found"
+    if [ "$required_count" -ne 1 ] || ! grep -q '^## Default Sections$' "$upstream_tmp"; then
+        warn "upstream structure changed; expected attribution and default section headings were not found"
         return 0
     fi
 
     awk '
         BEGIN {
-            skip_required = 0
-            skip_example = 0
-            in_example = 0
+            skip_attribution = 0
         }
         {
-            if (skip_required) {
-                if ($0 ~ /^### /) {
-                    skip_required = 0
-                } else {
+            if (skip_attribution) {
+                if ($0 == "````") {
+                    skip_attribution = 0
+                    print
                     next
                 }
-            }
-
-            if (skip_example) {
-                if ($0 ~ /^## /) {
-                    skip_example = 0
-                } else {
-                    next
-                }
-            }
-
-            if ($0 == "## Example Structure") {
-                in_example = 1
-            }
-
-            if ($0 == "### Commit Attribution") {
-                skip_required = 1
                 next
             }
 
-            if (in_example && $0 == "## Commit Attribution") {
-                skip_example = 1
+            if ($0 == "## Commit Attribution") {
+                skip_attribution = 1
                 next
             }
 
