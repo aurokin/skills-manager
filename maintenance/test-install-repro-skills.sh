@@ -1037,8 +1037,22 @@ test_excluded_skill_is_ignored_in_repo_coverage_audit() {
     local local_config_file="$TEST_ROOT/.skills.local.json"
     cat > "$local_config_file" <<'EOF'
 {
+  "globalSpecs": [
+    "vercel-labs/agent-browser"
+  ],
   "excludeGlobalSpecs": [
     "vercel-labs/agent-browser@slack"
+  ]
+}
+EOF
+
+    cat > "$TEST_ROOT/upstream-coverage.json" <<'EOF'
+{
+  "repos": [
+    {
+      "repo": "vercel-labs/agent-browser",
+      "ignored": []
+    }
   ]
 }
 EOF
@@ -1048,17 +1062,33 @@ EOF
 
     run_sync_with_env LOCAL_SKILLS_CONFIG_FILE="$local_config_file"
 
+    assert_contains "$OUTPUT_FILE" "Auditing full-coverage upstream repos..."
     assert_contains "$OUTPUT_FILE" "Removing: slack"
     assert_log_contains "remove|slack"
     assert_not_contains "$OUTPUT_FILE" "WARN: Undeclared upstream skill(s) in vercel-labs/agent-browser:"
+    assert_not_contains "$OUTPUT_FILE" "WARN: Skipping upstream repo coverage audit because no coverage repos are configured"
 }
 
 test_excluded_missing_skill_is_ignored_in_repo_coverage_audit() {
     local local_config_file="$TEST_ROOT/.skills.local.json"
     cat > "$local_config_file" <<'EOF'
 {
+  "globalSpecs": [
+    "vercel-labs/agent-browser"
+  ],
   "excludeGlobalSpecs": [
     "vercel-labs/agent-browser@slack"
+  ]
+}
+EOF
+
+    cat > "$TEST_ROOT/upstream-coverage.json" <<'EOF'
+{
+  "repos": [
+    {
+      "repo": "vercel-labs/agent-browser",
+      "ignored": []
+    }
   ]
 }
 EOF
@@ -1069,10 +1099,12 @@ EOF
 
     run_sync_with_env LOCAL_SKILLS_CONFIG_FILE="$local_config_file"
 
+    assert_contains "$OUTPUT_FILE" "Auditing full-coverage upstream repos..."
     assert_contains "$OUTPUT_FILE" "Removing: slack"
     assert_log_contains "remove|slack"
     assert_not_contains "$OUTPUT_FILE" "WARN: Declared skill(s) no longer found in vercel-labs/agent-browser:"
     assert_not_contains "$OUTPUT_FILE" "WARN: Undeclared upstream skill(s) in vercel-labs/agent-browser:"
+    assert_not_contains "$OUTPUT_FILE" "WARN: Skipping upstream repo coverage audit because no coverage repos are configured"
 }
 
 test_empty_result_sync_is_valid() {
