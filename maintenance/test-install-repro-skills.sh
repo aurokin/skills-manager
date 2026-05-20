@@ -461,7 +461,7 @@ test_clean_noop() {
     run_sync
 
     assert_contains "$OUTPUT_FILE" "No stale skills to remove."
-    assert_contains "$OUTPUT_FILE" "No upstream coverage drift found."
+    assert_contains "$OUTPUT_FILE" "WARN: Skipping upstream repo coverage audit because no coverage repos are configured"
     assert_contains "$OUTPUT_FILE" "No skills to add."
 }
 
@@ -549,7 +549,7 @@ test_batched_adds() {
 
     assert_log_count "$(count_spec_repos)" "add|"
     assert_log_count 1 "add|vercel-labs/agent-browser|"
-    assert_log_contains "add|vercel-labs/agent-browser|agent-browser agentcore dogfood electron slack vercel-sandbox"
+    assert_log_contains "add|vercel-labs/agent-browser|agent-browser"
     assert_log_contains "add|openai/skills|openai-docs pdf screenshot security-best-practices skill-creator"
     assert_log_not_contains "add|expo/skills|"
     assert_log_not_contains "add|waynesutton/convexskills|"
@@ -1044,6 +1044,7 @@ test_excluded_skill_is_ignored_in_repo_coverage_audit() {
 EOF
 
     seed_state_with_all_specs
+    printf '%s\n' "slack" >> "$STATE_FILE"
 
     run_sync_with_env LOCAL_SKILLS_CONFIG_FILE="$local_config_file"
 
@@ -1063,6 +1064,7 @@ test_excluded_missing_skill_is_ignored_in_repo_coverage_audit() {
 EOF
 
     seed_state_with_all_specs
+    printf '%s\n' "slack" >> "$STATE_FILE"
     rm -rf "$MOCK_REPOS/vercel-labs/agent-browser/skills/slack"
 
     run_sync_with_env LOCAL_SKILLS_CONFIG_FILE="$local_config_file"
