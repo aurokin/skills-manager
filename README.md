@@ -63,6 +63,7 @@ the standard set defined in `lib/agents.sh`:
 - `gemini-cli`
 - `github-copilot`
 - `claude-code`
+- `droid`
 
 Override the list to scope a run to a subset of agents, or to opt into
 additional agents like Hermes (see below).
