@@ -1,4 +1,4 @@
-anthropics/skills@frontend-design
+pbakaus/impeccable@impeccable
 anthropics/skills@webapp-testing
 openai/skills@openai-docs
 openai/skills@pdf

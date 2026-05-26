@@ -189,6 +189,9 @@ The source of truth is split by purpose:
 
 - `catalog/global-specs.txt`
   global skills managed by `install-repro-skills.sh`
+- `upstream-coverage.json`
+  global upstream repos audited for skill drift during
+  `install-repro-skills.sh` (when `SKILLS_AUDIT_REPO_COVERAGE=1`)
 - `catalog/families.tsv`
   family names and descriptions for project deployment
 - `catalog/families/*.txt`
@@ -199,6 +202,28 @@ The source of truth is split by purpose:
 Current project families:
 - `expo`
 - `convex`
+
+### Notable catalog changes
+
+**Impeccable replaces Anthropic `frontend-design`.** The global catalog now
+installs [`pbakaus/impeccable@impeccable`](https://impeccable.style/) instead of
+`anthropics/skills@frontend-design`. Impeccable v2.0 replaced the old skill with
+a single `/impeccable` namespace.
+
+After you run `./install-repro-skills.sh`:
+
+- `frontend-design` is removed from `~/.agents/skills` and `~/.claude/skills`
+  if it was installed by this workflow
+- `impeccable` is added when missing
+
+If you still want the old skill name on disk, add `frontend-design` to
+`preserveGlobalSkillNames` in `.skills.local.json`. That only blocks stale
+removal; it does not reinstall the Anthropic package.
+
+`pbakaus/impeccable` is listed in `upstream-coverage.json` so installs are
+audited for upstream drift. The repo ships the same skill under many agent
+paths (`.cursor/skills/impeccable`, `skill/SKILL.md`, and others); enumeration
+dedupes by frontmatter `name: impeccable`, so only the curated skill is tracked.
 
 ## Personal Overlay
 

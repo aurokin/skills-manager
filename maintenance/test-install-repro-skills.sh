@@ -148,6 +148,7 @@ EOF
 seed_default_mock_repos() {
     local agent_browser_root="$MOCK_REPOS/vercel-labs/agent-browser"
     local anthropics_skills_root="$MOCK_REPOS/anthropics/skills"
+    local impeccable_root="$MOCK_REPOS/pbakaus/impeccable"
     local openai_skills_root="$MOCK_REPOS/openai/skills"
     local clawdis_root="$MOCK_REPOS/steipete/clawdis"
     local openclaw_root="$MOCK_REPOS/openclaw/openclaw"
@@ -160,6 +161,7 @@ seed_default_mock_repos() {
     mkdir -p \
         "$agent_browser_root" \
         "$anthropics_skills_root" \
+        "$impeccable_root" \
         "$openai_skills_root" \
         "$clawdis_root" \
         "$openclaw_root" \
@@ -169,7 +171,7 @@ seed_default_mock_repos() {
         "$matt_root" \
         "$humanizer_root"
 
-    create_mock_skill_file "$anthropics_skills_root" "frontend-design"
+    create_mock_skill_file "$impeccable_root" "impeccable"
     create_mock_skill_file "$anthropics_skills_root" "webapp-testing"
 
     create_mock_skill_file "$openai_skills_root" "openai-docs"
@@ -461,7 +463,9 @@ test_clean_noop() {
     run_sync
 
     assert_contains "$OUTPUT_FILE" "No stale skills to remove."
-    assert_contains "$OUTPUT_FILE" "WARN: Skipping upstream repo coverage audit because no coverage repos are configured"
+    assert_contains "$OUTPUT_FILE" "Auditing full-coverage upstream repos..."
+    assert_contains "$OUTPUT_FILE" "No upstream coverage drift found."
+    assert_not_contains "$OUTPUT_FILE" "WARN: Undeclared upstream skill(s) in pbakaus/impeccable:"
     assert_contains "$OUTPUT_FILE" "No skills to add."
 }
 
@@ -1033,6 +1037,34 @@ EOF
     assert_log_not_contains "add|"
 }
 
+test_frontend_design_migrated_to_impeccable() {
+    seed_state_with_all_specs
+    grep -v '^impeccable$' "$STATE_FILE" > "$STATE_FILE.tmp"
+    mv "$STATE_FILE.tmp" "$STATE_FILE"
+    printf '%s\n' "frontend-design" >> "$STATE_FILE"
+    sort -u "$STATE_FILE" -o "$STATE_FILE"
+
+    run_sync
+
+    assert_contains "$OUTPUT_FILE" "Removing: frontend-design"
+    assert_log_contains "remove|frontend-design"
+    assert_contains "$OUTPUT_FILE" "Adding from pbakaus/impeccable: impeccable"
+    assert_log_contains "add|pbakaus/impeccable|impeccable"
+    assert_log_not_contains "remove|impeccable"
+}
+
+test_impeccable_coverage_audit_detects_undeclared_skills() {
+    seed_state_with_all_specs
+    create_mock_skill_file "$MOCK_REPOS/pbakaus/impeccable" "layout-drift-probe"
+
+    run_sync
+
+    assert_contains "$OUTPUT_FILE" "Auditing full-coverage upstream repos..."
+    assert_contains "$OUTPUT_FILE" "WARN: Undeclared upstream skill(s) in pbakaus/impeccable: layout-drift-probe"
+    assert_contains "$OUTPUT_FILE" "No skills to add."
+    assert_contains "$OUTPUT_FILE" "Done."
+}
+
 test_excluded_skill_is_ignored_in_repo_coverage_audit() {
     local local_config_file="$TEST_ROOT/.skills.local.json"
     cat > "$local_config_file" <<'EOF'
@@ -1267,6 +1299,8 @@ run_test "summary failure happens before mutation" test_summary_failure_happens_
 run_test "global exclusion removes curated skill as stale" test_global_exclusion_removes_curated_skill_as_stale
 run_test "global exclusion removes locally added spec" test_global_exclusion_removes_locally_added_spec
 run_test "unknown global exclusion is a no-op" test_unknown_global_exclusion_is_noop
+run_test "frontend-design migrates to impeccable" test_frontend_design_migrated_to_impeccable
+run_test "impeccable coverage audit detects undeclared skills" test_impeccable_coverage_audit_detects_undeclared_skills
 run_test "excluded skill is ignored in repo coverage audit" test_excluded_skill_is_ignored_in_repo_coverage_audit
 run_test "excluded missing skill is ignored in repo coverage audit" test_excluded_missing_skill_is_ignored_in_repo_coverage_audit
 run_test "empty-result sync is valid" test_empty_result_sync_is_valid
