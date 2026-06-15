@@ -148,6 +148,7 @@ EOF
 seed_default_mock_repos() {
     local agent_browser_root="$MOCK_REPOS/vercel-labs/agent-browser"
     local anthropics_skills_root="$MOCK_REPOS/anthropics/skills"
+    local diffwarden_root="$MOCK_REPOS/aurokin/diffwarden"
     local impeccable_root="$MOCK_REPOS/pbakaus/impeccable"
     local openai_skills_root="$MOCK_REPOS/openai/skills"
     local clawdis_root="$MOCK_REPOS/steipete/clawdis"
@@ -162,6 +163,7 @@ seed_default_mock_repos() {
     mkdir -p \
         "$agent_browser_root" \
         "$anthropics_skills_root" \
+        "$diffwarden_root" \
         "$impeccable_root" \
         "$openai_skills_root" \
         "$clawdis_root" \
@@ -175,6 +177,7 @@ seed_default_mock_repos() {
 
     create_mock_skill_file "$impeccable_root" "impeccable"
     create_mock_skill_file "$anthropics_skills_root" "webapp-testing"
+    create_mock_skill_file "$diffwarden_root" "diffwarden"
 
     create_mock_skill_file "$openai_skills_root" "openai-docs"
     create_mock_skill_file "$openai_skills_root" "pdf"
@@ -305,6 +308,7 @@ PY
         fi
         skills=()
         agents=()
+        extra_args=()
         while [ "$#" -gt 0 ]; do
             case "$1" in
                 -g|--global|-y|--yes)
@@ -325,6 +329,7 @@ PY
                     done
                     ;;
                 *)
+                    extra_args+=("$1")
                     shift
                     ;;
             esac
@@ -333,7 +338,11 @@ PY
             echo "missing skill list for add" >&2
             exit 1
         fi
-        printf 'add|%s|%s|agents=%s\n' "$repo" "${skills[*]}" "${agents[*]}" >> "$log_file"
+        if [ "${#extra_args[@]}" -eq 0 ]; then
+            printf 'add|%s|%s|agents=%s\n' "$repo" "${skills[*]}" "${agents[*]}" >> "$log_file"
+        else
+            printf 'add|%s|%s|agents=%s|extra=%s\n' "$repo" "${skills[*]}" "${agents[*]}" "${extra_args[*]}" >> "$log_file"
+        fi
         for skill in "${skills[@]}"; do
             printf '%s\n' "$skill" >> "$state_file"
         done
@@ -558,6 +567,7 @@ test_batched_adds() {
 
     assert_log_count "$(count_spec_repos)" "add|"
     assert_log_count 1 "add|vercel-labs/agent-browser|"
+    assert_log_contains "add|aurokin/diffwarden|diffwarden|agents=codex opencode gemini-cli github-copilot claude-code|extra=--full-depth"
     assert_log_contains "add|vercel-labs/agent-browser|agent-browser"
     assert_log_contains "add|openai/skills|openai-docs pdf screenshot security-best-practices skill-creator"
     assert_log_not_contains "add|expo/skills|"

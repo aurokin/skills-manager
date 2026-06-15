@@ -358,6 +358,11 @@ main() {
             if [ "$repo" = "openclaw/openclaw" ]; then
                 add_extra_args+=(--dangerously-accept-openclaw-risks)
             fi
+            # Diffwarden keeps its consumable skill below skills/diffwarden/.
+            # Full-depth discovery matches the install command documented there.
+            if [ "$repo" = "aurokin/diffwarden" ]; then
+                add_extra_args+=(--full-depth)
+            fi
             "$SKILLS_BIN" add "$repo" -g -a "${skills_agents[@]}" -s "${repo_skills[@]}" -y "${add_extra_args[@]}"
         done
     fi
