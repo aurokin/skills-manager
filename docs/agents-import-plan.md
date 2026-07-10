@@ -4,7 +4,8 @@
 - Date: 2026-07-10
 - Decisions: [ADR 0007](adr/0007-agent-definitions-artifact-type.md) (agent
   definitions as artifact type), [ADR 0008](adr/0008-tprompt-export.md)
-  (tprompt export channel). Research grounded in source dives of
+  (tprompt export channel), [ADR 0009](adr/0009-dialect-document-emitter-rendering.md)
+  (dialect → document AST → emitter rendering). Research grounded in source dives of
   `~/code/custom_agents` @ 6eacdbe (tests: 210 pass; 2 TUI-only failures
   from a missing optional dep) and `~/code/tprompt`.
 
@@ -154,11 +155,13 @@ tests only, read-only verbs against the real machine.
    phase 5's reap list, so it is a blocker, not a cosmetic follow-up.
    Verify: schema fixtures accept/reject identically to Python; registry
    entries cite evidence per ADR 0003.
-2. **Renderers + goldens.** All six agent-def dialects plus the derived
-   skill body; golden-file byte-equality tests (goldens generated from the
-   Python tool now, while it still runs).
-   Verify: `bun test` goldens; the three real definitions render
-   byte-identically.
+2. **Renderers + goldens.** Build the ADR 0009 pipeline: Document AST, the
+   `yaml-pyyaml-compat` and `toml-codex-compat` emitters with adversarial
+   fixture suites, then all six agent-def dialects plus the derived skill
+   body; migrate the existing skill renderer onto the same pipeline.
+   Golden-file byte-equality tests per (dialect, emitter) binding.
+   Verify: `bun test` goldens incl. long/unicode/nested fixtures; the
+   three real definitions render byte-identically.
 3. **Resolver/solver/state integration.** `agents/` sources in public +
    overlay roots; type-qualified artifact keys, plan actions, ownership
    state (schema bump with the read-old/write-new rule above), prune
