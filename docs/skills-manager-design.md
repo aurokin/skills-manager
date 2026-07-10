@@ -332,6 +332,10 @@ Each phase lands as an independent PR with tests; bash behavior
 7. **Scoped upstream vendoring** — the store/pinning path (deferred until a
    real scoped-upstream need appears; canonical R1 examples are
    locally-authored).
+8. **Agent definitions + tprompt export** — absorb `custom_agents` as a
+   second artifact type and generalize its tprompt harness into a prompt
+   export channel for skills too. Decisions: ADR 0007 / ADR 0008; plan:
+   [agents-import-plan.md](agents-import-plan.md).
 
 ## 11. Deferred / explicitly not-v1
 

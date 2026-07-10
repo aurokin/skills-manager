@@ -12,6 +12,8 @@ design and the research behind these).
 | [0004](0004-first-party-frontmatter-rendering.md) | First-party agents (Claude, Codex, Copilot) get rendered per-agent frontmatter; shared dir leans Codex | accepted |
 | [0005](0005-machine-registry-in-xdg-config.md) | Machine-local registry in `~/.config`; no per-host layering in v1 | accepted |
 | [0006](0006-plan-apply-ownership-state.md) | Plan/apply verbs with an ownership-tagged state file | accepted |
+| [0007](0007-agent-definitions-artifact-type.md) | Agent definitions become a second artifact type; custom_agents absorbed | accepted |
+| [0008](0008-tprompt-export.md) | tprompt export as a generic prompt-export channel for agents and skills | accepted |
 
 Convention: new ADRs take the next number, one decision per file, statuses
 `proposed → accepted → superseded by NNNN`.
