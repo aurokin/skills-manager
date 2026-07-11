@@ -13,7 +13,7 @@ import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
 import { hashContent, renderedHash, treeHashOf } from "./render";
 import { classifyTarget, scanEntry } from "./scan";
-import { findOwner } from "./state";
+import { artifactKey, findOwner } from "./state";
 import { resolveTpromptCollisions } from "./tprompt/channel";
 import { tpromptPromptHash } from "./tprompt/render";
 import type {
@@ -65,6 +65,19 @@ export function buildPlan(
 
   const desiredPaths = new Set<string>(solved.placements.map((dp) => path.resolve(dp.placement.path)));
 
+  // Cross-artifact path ownership: a path owned in state by one artifact key but
+  // now desired under a different key (e.g. native skill:foo replaced by
+  // composed-skill:foo in one source change). Neither writing over the owned
+  // placement nor pruning it (collectPrunes keeps every desired path) is safe in
+  // one pass, so the plan refuses that placement with a two-step remedy instead
+  // of leaving zombie dual ownership that can never converge.
+  const stateOwnerByPath = new Map<string, string>();
+  for (const [key, artifact] of Object.entries(state.artifacts)) {
+    for (const sp of artifact.placements) {
+      stateOwnerByPath.set(path.resolve(expandTilde(env, sp.path)), key);
+    }
+  }
+
   // tprompt flat-namespace collision guard: foreign prompts sharing a desired stem
   // are reported + skipped for that placement only (ADR 0006), never failing the
   // rest of the plan. skm-vs-skm clashes already hard-failed in the resolver.
@@ -105,6 +118,20 @@ export function buildPlan(
         skill: dp.skill,
         message: `private skill '${dp.skill}' is unscoped → placed in the world-readable shared dir (${p.path}); add scoping to restrict which agents see it`,
       });
+    }
+
+    const desiredKey = artifactKey(p.artifactType ?? "skill", dp.skill);
+    const stateOwner = stateOwnerByPath.get(path.resolve(p.path));
+    if (stateOwner !== undefined && stateOwner !== desiredKey) {
+      warnings.push({
+        kind: "ownership-handoff",
+        skill: dp.skill,
+        message:
+          `${p.path} is owned in state by ${stateOwner} but now desired by ${desiredKey}; ` +
+          `refusing to write. Replace in two applies: first remove the old artifact ` +
+          `and run apply --prune, then add the new one.`,
+      });
+      continue;
     }
 
     if (p.channel === "tprompt") {

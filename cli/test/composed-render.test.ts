@@ -25,7 +25,7 @@ import { computeDesiredPlacements } from "../src/placements";
 import { explainSkill } from "../src/explain";
 import { computeDrift } from "../src/status";
 import type { DesiredComposedSkill, MachineConfig, Posture, Registry, VerbOptions } from "../src/types";
-import { makeComposed, makeRoot, makeSandbox, realRegistryPath, writeMachineConfig, type Sandbox } from "./util";
+import { makeAgentScopes, makeComposed, makeRoot, makeSandbox, makeSkill, realRegistryPath, writeMachineConfig, type Sandbox } from "./util";
 
 const registry = loadRegistry(realRegistryPath());
 const fixturesDir = `${import.meta.dir}/goldens/fixtures`;
@@ -372,6 +372,40 @@ describe("prune + classifyRemoval on a composed tree", () => {
     expect(fs.existsSync(claudeTree())).toBe(false);
     expect(fs.existsSync(codexTree())).toBe(false);
     expect(loadState(sandbox!.env).artifacts["composed-skill:orchestrate"]).toBeUndefined();
+  });
+});
+
+describe("cross-artifact ownership handoff", () => {
+  test("replacing a native skill with a same-named composed skill is refused with a two-step remedy", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "root", "public");
+    // Native skill 'orchestrate' scoped to claude-code (public catalog scoping) →
+    // lands only at ~/.claude/skills/orchestrate.
+    makeSkill(root.path, "orchestrate");
+    makeAgentScopes(root.path, { orchestrate: { agents: { allow: ["claude-code"] } } });
+    writeMachineConfig(sandbox, config([root]));
+    await runApply(sandbox!.env, opts());
+    expect(loadState(sandbox!.env).artifacts["skill:orchestrate"]).toBeDefined();
+
+    // Replace the native source with a composed skill of the same name in one change.
+    fs.rmSync(path.join(root.path, "skills/orchestrate"), { recursive: true });
+    makeAgentScopes(root.path, {});
+    makeComposed(root.path, "orchestrate", composedOpts());
+
+    const ctx = loadContext(sandbox!.env);
+    const plan = buildPlan(sandbox!.env, ctx.config, ctx.registry, ctx.desired, ctx.state);
+    const handoff = plan.warnings.filter((w) => w.kind === "ownership-handoff");
+    expect(handoff).toHaveLength(1);
+    expect(handoff[0]!.message).toContain("skill:orchestrate");
+    expect(handoff[0]!.message).toContain("composed-skill:orchestrate");
+    expect(handoff[0]!.message).toContain("two applies");
+    // The claude-code placement is refused (no create writes over the owned symlink);
+    // the codex placement has no prior owner and proceeds.
+    const creates = plan.actions.filter((a) => a.type === "create");
+    expect(creates.map((a) => a.placement.agent)).toEqual(["codex"]);
+    // The old placement is not pruned either (its path is still desired) — no
+    // destruction, no zombie write; state converges via the two-step remedy.
+    expect(plan.actions.filter((a) => a.type === "prune")).toHaveLength(0);
   });
 });
 

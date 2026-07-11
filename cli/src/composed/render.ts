@@ -75,6 +75,10 @@ export function renderComposedSkill(
   registry: Registry,
 ): RenderedComposedTree {
   const posture = skill.posture;
+  // Self-exclusion is DERIVED from registry ownDir by design (ADR 0010, review
+  // ruling R4): skill.yaml has no self-provider override — `selfProvider` only
+  // accepts "none" and is a load-time acknowledgment, validated coherent with
+  // this derivation (schema.ts), never a routing input.
   const selfId = registry.agents[consumer]?.ownDir;
   const declared = Object.keys(skill.providers);
   const enabled = new Set(declared.filter((p) => p !== selfId));

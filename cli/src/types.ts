@@ -379,7 +379,10 @@ export type WarningKind =
   | "frontmatter"
   | "modified"
   // A composed-skill provider file on disk that no dimension references (AUR-645).
-  | "unused-provider";
+  | "unused-provider"
+  // A path owned in state by one artifact key but desired under another (AUR-646):
+  // the plan refuses the placement rather than write over or zombie-own it.
+  | "ownership-handoff";
 
 export interface Warning {
   kind: WarningKind;

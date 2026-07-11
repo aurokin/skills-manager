@@ -294,6 +294,15 @@ function validateConsumersAgainstRegistry(
           `add 'selfProvider: none' to its skill.yaml entry to acknowledge this (${path})`,
       );
     }
+    // The acknowledgment must also be coherent the other way: 'none' declared while
+    // the derived self IS a provider contradicts the registry and would misstate
+    // which provider gets self-excluded.
+    if (selfDir in providers && consumer.selfProvider === "none") {
+      throw new ComposedSkillError(
+        `Consumer '${id}' declares 'selfProvider: none' but its registry ownDir '${selfDir}' IS a declared provider; ` +
+          `remove the acknowledgment (${path})`,
+      );
+    }
 
     // Two consumers resolving to the same target ownDir would fight over one output
     // directory (a build error, from registry data alone).
