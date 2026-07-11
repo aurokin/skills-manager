@@ -1,0 +1,112 @@
+name: kitchen-sink
+description: Fully populated agent exercising every harness block for byte-compat goldens.
+export: agent
+defaults:
+  sandbox: workspace-write
+  model_strategy: pinned-defaults
+  skills:
+    - web-design-guidelines
+    - plan-reviewer
+claude:
+  model: opus-4.7
+  tools:
+    - Read
+    - Grep
+    - Glob
+    - Edit
+  disallowed_tools:
+    - Write
+  permission_mode: acceptEdits
+  max_turns: 20
+  effort: max
+  mcp_servers:
+    github:
+      command: npx
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-github"
+      env:
+        GITHUB_TOKEN: token-placeholder
+  background: true
+  extraNested:
+    foo: bar
+    nums:
+      - 1
+      - 2
+      - 3
+codex:
+  model: gpt-5.5
+  model_reasoning_effort: xhigh
+  sandbox_mode: workspace-write
+  nickname_candidates:
+    - Atlas
+    - Echo
+  mcp_servers:
+    linear:
+      command: linear-mcp
+      args:
+        - serve
+  skills_config:
+    - name: web-design-guidelines
+      enabled: false
+    - path: ./local-skill
+      enabled: true
+  config:
+    approval_policy: on-request
+    extra_table:
+      nested: value
+copilot:
+  target: github-copilot
+  tools:
+    - read
+    - search
+    - edit
+    - "github/*"
+  model: gpt-5.5-high
+  disable_model_invocation: true
+  user_invocable: true
+  infer: false
+  mcp_servers:
+    github:
+      command: docker
+  metadata:
+    owner: frontend-platform
+    tier: primary
+cursor:
+  model: gpt-5.4-cursor
+  readonly: false
+  description: Cursor-specific kitchen-sink blurb
+opencode:
+  model: opencode/gpt-5.1-codex
+  variant: reasoning
+  temperature: 0.1
+  top_p: 0.9
+  disable: true
+  hidden: true
+  color: accent
+  steps: 8
+  permission:
+    edit: ask
+    bash:
+      "*": ask
+      "git diff*": allow
+  tools:
+    write: false
+    read: true
+  options:
+    reasoningEffort: high
+gemini:
+  tools:
+    - read_file
+    - grep_search
+    - "mcp_github_*"
+  model: gemini-2.5-flash
+  temperature: 0.2
+  max_turns: 12
+  timeout_mins: 10
+  mcp_servers:
+    github:
+      command: npx
+      args:
+        - "-y"
+        - "@modelcontextprotocol/server-github"

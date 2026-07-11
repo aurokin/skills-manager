@@ -1,0 +1,20 @@
+name: skill-export-demo
+description: Native agent description for the skill export fixture.
+export: skill
+defaults:
+  sandbox: read-only
+skill:
+  name: review-helper
+  title: Review Helper
+  description: Use when reviewing a patch before merge.
+  tags:
+    - review
+    - code
+    - "yes"
+  license: MIT
+  compatibility:
+    - agent-skills
+    - claude-skills
+  metadata:
+    owner: platform
+    tier: gold

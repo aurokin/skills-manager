@@ -1,0 +1,22 @@
+name: codexrabbit-code-reviewer
+description: Lightweight code reviewer that emits prioritized, structured findings.
+defaults:
+  sandbox: read-only
+  model_strategy: floating
+claude:
+  tools:
+    - Read
+    - Grep
+    - Glob
+  disallowed_tools:
+    - Write
+  permission_mode: default
+  max_turns: 16
+codex:
+  nickname_candidates:
+    - CodexRabbit
+gemini:
+  tools:
+    - read_file
+    - grep_search
+  max_turns: 16

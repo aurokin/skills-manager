@@ -1,0 +1,38 @@
+---
+name: kitchen-sink-floating
+description: Floating model strategy variant exercising vscode copilot and default
+  omission.
+target: vscode
+tools:
+- read
+- search
+agents: '*'
+model:
+- gpt-5.4-high
+- gpt-5.4
+disable-model-invocation: true
+user-invocable: true
+mcp-servers:
+- id: github
+  command:
+    name: npx
+    args:
+    - -y
+    - github-mcp
+argument-hint: repo:path
+handoffs:
+- label: Code Review
+  agent: code-review
+  prompt: Review the diff
+  send: true
+  model: gpt-5.4
+hooks:
+  post-edit:
+    command: npm test
+---
+
+# Floating kitchen sink agent
+
+Floating model strategy: model fields are omitted from harness output.
+
+Exercise the vscode Copilot surface with handoffs, hooks, and argument hints.

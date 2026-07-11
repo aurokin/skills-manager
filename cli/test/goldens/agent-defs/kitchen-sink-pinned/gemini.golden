@@ -1,0 +1,26 @@
+---
+name: kitchen-sink
+description: Fully populated agent exercising every harness block for byte-compat
+  goldens.
+tools:
+- read_file
+- grep_search
+- mcp_github_*
+model: gemini-2.5-flash
+temperature: 0.2
+max_turns: 12
+timeout_mins: 10
+mcpServers:
+  github:
+    command: npx
+    args:
+    - -y
+    - '@modelcontextprotocol/server-github'
+---
+
+# Kitchen sink agent
+
+You are a fully configured agent used to exercise every harness renderer.
+
+- Follow the developer instructions precisely.
+- Emit structured findings.

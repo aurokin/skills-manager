@@ -1,0 +1,21 @@
+name: formatting-traps
+description: "@edge: use [brackets] & {braces} *stars* with CJK 中文 and emoji \U0001F680 padded out long enough to trigger PyYAML line wrapping past eighty columns"
+export: agent
+defaults:
+  sandbox: read-only
+  model_strategy: pinned-defaults
+claude:
+  tools:
+    - "yes"
+    - "no"
+    - "on"
+    - "true"
+    - Read
+  effort: high
+codex:
+  nickname_candidates:
+    - Trap
+copilot:
+  tools: []
+gemini:
+  tools: []

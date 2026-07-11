@@ -1,0 +1,25 @@
+---
+name: kitchen-sink-floating
+description: Floating model strategy variant exercising vscode copilot and default
+  omission.
+tools:
+- Read
+- Grep
+- Glob
+disallowedTools:
+- Write
+permissionMode: plan
+maxTurns: 5
+skills:
+- web-design-guidelines
+- plan-reviewer
+mcpServers:
+- github
+background: true
+---
+
+# Floating kitchen sink agent
+
+Floating model strategy: model fields are omitted from harness output.
+
+Exercise the vscode Copilot surface with handoffs, hooks, and argument hints.

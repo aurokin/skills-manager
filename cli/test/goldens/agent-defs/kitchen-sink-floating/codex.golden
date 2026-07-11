@@ -1,0 +1,25 @@
+name = "kitchen-sink-floating"
+description = "Floating model strategy variant exercising vscode copilot and default omission."
+developer_instructions = """# Floating kitchen sink agent
+
+Floating model strategy: model fields are omitted from harness output.
+
+Exercise the vscode Copilot surface with handoffs, hooks, and argument hints.
+"""
+sandbox_mode = "danger-full-access"
+nickname_candidates = ["Nova"]
+hide_agent_reasoning = true
+
+[skills]
+
+[[skills.config]]
+name = "web-design-guidelines"
+enabled = true
+
+[[skills.config]]
+name = "plan-reviewer"
+enabled = true
+
+[[skills.config]]
+name = "extra-skill"
+enabled = true

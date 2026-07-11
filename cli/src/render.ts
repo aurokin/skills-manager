@@ -6,9 +6,12 @@
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml } from "yaml";
 import type { SkmEnv } from "./env";
 import type { Dialect, DesiredSkill, RenderResult } from "./types";
+import { doc, list } from "./render/doc";
+import type { Document, DocValue } from "./render/doc";
+import { emitYamlCanonical } from "./render/emit-yaml-canonical";
 
 /** Canonical top-level frontmatter order (design §6); remaining keys sort alphabetically. */
 const CANONICAL_ORDER = [
@@ -30,7 +33,27 @@ export function renderedSkillMd(skill: DesiredSkill, dialect: Dialect): string {
   const { frontmatter, body } = splitFrontmatter(raw);
   const base = (parseYaml(frontmatter) as Record<string, unknown> | null) ?? {};
   const merged = deepMerge(base, override) as Record<string, unknown>;
-  return `---\n${stringifyYaml(orderFrontmatter(merged))}---\n${body}`;
+  // Route through the ADR 0009 pipeline: build a Document mirroring the ordered
+  // frontmatter and emit it with the canonical (library-default) YAML emitter —
+  // byte-identical to the prior direct `stringify(orderFrontmatter(merged))`.
+  const yaml = emitYamlCanonical(plainToDocument(orderFrontmatter(merged)));
+  return `---\n${yaml}---\n${body}`;
+}
+
+/** Convert an ordered plain-object frontmatter into a Document AST. */
+function plainToDocument(record: Record<string, unknown>): Document {
+  const builder = doc();
+  for (const [key, value] of Object.entries(record)) {
+    builder.set(key, plainToDocValue(value));
+  }
+  return builder.build();
+}
+
+/** Convert an arbitrary parsed-YAML value into a DocValue (scalars/lists/maps). */
+function plainToDocValue(value: unknown): DocValue {
+  if (Array.isArray(value)) return list(value.map(plainToDocValue));
+  if (isPlainObject(value)) return plainToDocument(value);
+  return value as DocValue;
 }
 
 /** sha256 of the rendered SKILL.md a placement would produce (no disk write). */

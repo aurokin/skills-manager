@@ -1,0 +1,29 @@
+---
+description: Fully populated agent exercising every harness block for byte-compat
+  goldens.
+mode: subagent
+model: opencode/gpt-5.1-codex
+variant: reasoning
+temperature: 0.1
+top_p: 0.9
+disable: true
+hidden: true
+color: accent
+steps: 8
+permission:
+  edit: ask
+  bash:
+    '*': ask
+    git diff*: allow
+tools:
+  write: false
+  read: true
+reasoningEffort: high
+---
+
+# Kitchen sink agent
+
+You are a fully configured agent used to exercise every harness renderer.
+
+- Follow the developer instructions precisely.
+- Emit structured findings.

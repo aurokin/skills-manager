@@ -1,0 +1,12 @@
+---
+name: kitchen-sink-floating
+description: Floating model strategy variant exercising vscode copilot and default
+  omission.
+model: gpt-5.4-cursor
+---
+
+# Floating kitchen sink agent
+
+Floating model strategy: model fields are omitted from harness output.
+
+Exercise the vscode Copilot surface with handoffs, hooks, and argument hints.

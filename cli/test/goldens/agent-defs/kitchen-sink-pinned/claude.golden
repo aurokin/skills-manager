@@ -1,0 +1,41 @@
+---
+name: kitchen-sink
+description: Fully populated agent exercising every harness block for byte-compat
+  goldens.
+tools:
+- Read
+- Grep
+- Glob
+- Edit
+disallowedTools:
+- Write
+model: opus-4.7
+permissionMode: acceptEdits
+maxTurns: 20
+effort: max
+skills:
+- web-design-guidelines
+- plan-reviewer
+mcpServers:
+  github:
+    command: npx
+    args:
+    - -y
+    - '@modelcontextprotocol/server-github'
+    env:
+      GITHUB_TOKEN: token-placeholder
+background: true
+extraNested:
+  foo: bar
+  nums:
+  - 1
+  - 2
+  - 3
+---
+
+# Kitchen sink agent
+
+You are a fully configured agent used to exercise every harness renderer.
+
+- Follow the developer instructions precisely.
+- Emit structured findings.

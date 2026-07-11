@@ -1,0 +1,37 @@
+name = "kitchen-sink"
+description = "Fully populated agent exercising every harness block for byte-compat goldens."
+developer_instructions = """# Kitchen sink agent
+
+You are a fully configured agent used to exercise every harness renderer.
+
+- Follow the developer instructions precisely.
+- Emit structured findings.
+"""
+model = "gpt-5.5"
+model_reasoning_effort = "xhigh"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Atlas", "Echo"]
+approval_policy = "on-request"
+
+[mcp_servers]
+
+[mcp_servers.linear]
+command = "linear-mcp"
+args = ["serve"]
+
+[skills]
+
+[[skills.config]]
+name = "web-design-guidelines"
+enabled = false
+
+[[skills.config]]
+name = "plan-reviewer"
+enabled = true
+
+[[skills.config]]
+path = "./local-skill"
+enabled = true
+
+[extra_table]
+nested = "value"

@@ -1,0 +1,70 @@
+name: kitchen-sink-floating
+description: Floating model strategy variant exercising vscode copilot and default omission.
+export: agent
+defaults:
+  sandbox: full-access
+  model_strategy: floating
+  skills:
+    - web-design-guidelines
+    - plan-reviewer
+claude:
+  tools:
+    - Read
+    - Grep
+    - Glob
+  disallowed_tools:
+    - Write
+  permission_mode: plan
+  max_turns: 5
+  mcp_servers:
+    - github
+  background: true
+codex:
+  nickname_candidates:
+    - Nova
+  skills_config:
+    - name: extra-skill
+      enabled: true
+  config:
+    hide_agent_reasoning: true
+copilot:
+  target: vscode
+  tools:
+    - read
+    - search
+  model:
+    - gpt-5.4-high
+    - gpt-5.4
+  agents: "*"
+  disable_model_invocation: true
+  user_invocable: true
+  mcp_servers:
+    - id: github
+      command:
+        name: npx
+        args:
+          - "-y"
+          - github-mcp
+  argument_hint: "repo:path"
+  handoffs:
+    - label: Code Review
+      agent: code-review
+      prompt: Review the diff
+      send: true
+      model: gpt-5.4
+  hooks:
+    post-edit:
+      command: npm test
+cursor:
+  model: gpt-5.4-cursor
+opencode:
+  model: opencode/gpt-5.1
+  permission:
+    edit: ask
+  options:
+    reasoningEffort: medium
+gemini:
+  tools:
+    - read_file
+    - grep_search
+  max_turns: 16

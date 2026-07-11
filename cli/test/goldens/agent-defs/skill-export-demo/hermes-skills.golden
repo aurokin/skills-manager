@@ -1,0 +1,33 @@
+---
+name: review-helper
+description: Use when reviewing a patch before merge.
+license: MIT
+compatibility:
+- agent-skills
+- claude-skills
+tags:
+- review
+- code
+- 'yes'
+metadata:
+  source: custom_agents
+  original_name: skill-export-demo
+  owner: platform
+  tier: gold
+  hermes:
+    generated_by: custom_agents
+    source_agent: skill-export-demo
+---
+
+# Review Helper
+
+## Instructions
+
+Review the patch carefully before it merges.
+
+- Flag correctness, security, and maintainability risks.
+- Keep findings prioritized and actionable.
+
+## Source Notes
+
+This skill was generated from the `skill-export-demo` shared agent. The source agent declares `read-only` sandbox expectations, but skill consumers must enforce permissions themselves.

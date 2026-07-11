@@ -1,0 +1,16 @@
+---
+name: formatting-traps
+description: "@edge: use [brackets] & {braces} *stars* with CJK \u4E2D\u6587 and emoji\
+  \ \U0001F680 padded out long enough to trigger PyYAML line wrapping past eighty\
+  \ columns"
+readonly: true
+---
+
+# Trap instructions
+
+A line with a colon: value, and specials @ & * [ ] { } to stress escaping.
+
+Unicode body: 中文 and 🚀 rendered without escaping in TOML.
+
+
+Final paragraph before trailing blank lines.

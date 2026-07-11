@@ -1,0 +1,28 @@
+---
+name: kitchen-sink
+description: Fully populated agent exercising every harness block for byte-compat
+  goldens.
+target: github-copilot
+tools:
+- read
+- search
+- edit
+- github/*
+model: gpt-5.5-high
+disable-model-invocation: true
+user-invocable: true
+infer: false
+mcp-servers:
+  github:
+    command: docker
+metadata:
+  owner: frontend-platform
+  tier: primary
+---
+
+# Kitchen sink agent
+
+You are a fully configured agent used to exercise every harness renderer.
+
+- Follow the developer instructions precisely.
+- Emit structured findings.
