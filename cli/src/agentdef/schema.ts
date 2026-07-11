@@ -194,6 +194,8 @@ export interface TpromptConfig {
   mode?: string;
   enter?: boolean;
   filename?: string;
+  /** Suppress the no-subagents footer on this agent-def's prompt (default: appended). */
+  footer?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -602,12 +604,18 @@ function loadOpenCodeConfig(raw: Mapping, path: string): OpenCodeConfig {
   return config;
 }
 
-function loadTpromptConfig(raw: Mapping, path: string): TpromptConfig {
+/**
+ * Parse + validate a `tprompt:` block out of an already-parsed mapping (an
+ * agent.yaml root, or a skill SKILL.md frontmatter). Exported so the tprompt
+ * export channel validates skill blocks with the identical rules as agent defs.
+ * `enabled` is true iff the mapping declares a `tprompt` key.
+ */
+export function loadTpromptConfig(raw: Mapping, path: string): TpromptConfig {
   const enabled = "tprompt" in raw;
   const tpromptRaw = optionalMapping(raw, "tprompt", path);
   rejectUnknownKeys(
     tpromptRaw,
-    ["title", "description", "tags", "key", "mode", "enter", "filename"],
+    ["title", "description", "tags", "key", "mode", "enter", "filename", "footer"],
     `Unknown tprompt keys in ${path}`,
   );
   const filename = optionalStr(tpromptRaw, "filename", path);
@@ -626,6 +634,7 @@ function loadTpromptConfig(raw: Mapping, path: string): TpromptConfig {
     mode: optionalStr(tpromptRaw, "mode", path),
     enter: optionalBool(tpromptRaw, "enter", path),
     filename,
+    footer: optionalBool(tpromptRaw, "footer", path),
   };
 }
 

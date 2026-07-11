@@ -53,7 +53,7 @@ export interface Sandbox {
 
 const FIXED_TIME = "2026-07-10T00:00:00.000Z";
 
-export function makeSandbox(opts: { machineName?: string } = {}): Sandbox {
+export function makeSandbox(opts: { machineName?: string; tprompt?: boolean } = {}): Sandbox {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "skm-test-"));
   const home = path.join(base, "home");
   const xdgConfigHome = path.join(base, "xdg-config");
@@ -72,6 +72,8 @@ export function makeSandbox(opts: { machineName?: string } = {}): Sandbox {
     xdgStateHome,
     machineName: opts.machineName ?? "sandbox",
     clock,
+    // Injected tprompt-channel probe (never runs `which` on the real machine).
+    tpromptProbe: () => opts.tprompt === true,
   };
 
   return {
@@ -172,6 +174,28 @@ export function makeAgentScopes(
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, "agent-scopes.json");
   fs.writeFileSync(file, JSON.stringify({ version: 1, skills }, null, 2));
+  return file;
+}
+
+/**
+ * Write a tprompt config.toml into the sandbox ($XDG_CONFIG_HOME/tprompt/config.toml).
+ * `promptsDir` and each of `additionalDirs` are written verbatim (use absolute
+ * sandbox paths or `~/...`). Returns the config file path.
+ */
+export function writeTpromptConfig(
+  sandbox: Sandbox,
+  opts: { promptsDir?: string; additionalDirs?: string[] } = {},
+): string {
+  const dir = path.join(sandbox.env.xdgConfigHome!, "tprompt");
+  fs.mkdirSync(dir, { recursive: true });
+  const lines: string[] = [];
+  if (opts.promptsDir !== undefined) lines.push(`prompts_dir = ${JSON.stringify(opts.promptsDir)}`);
+  if (opts.additionalDirs !== undefined) {
+    const items = opts.additionalDirs.map((d) => JSON.stringify(d)).join(", ");
+    lines.push(`additional_prompts_dirs = [${items}]`);
+  }
+  const file = path.join(dir, "config.toml");
+  fs.writeFileSync(file, `${lines.join("\n")}\n`);
   return file;
 }
 

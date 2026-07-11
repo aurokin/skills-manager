@@ -150,6 +150,36 @@ export interface DesiredSkill {
   /** Resolved scoping; undefined means unscoped (shared path). */
   scoping?: AgentScope;
   overrides: AgentOverrides;
+  /** Parsed `tprompt:` frontmatter block (ADR 0008); present iff `enabled`. */
+  tprompt?: TpromptBlock;
+}
+
+/**
+ * A parsed `tprompt:` block (ADR 0008), shared by skills and agent definitions.
+ * Structurally the schema's TpromptConfig; `enabled` reports block presence.
+ */
+export interface TpromptBlock {
+  enabled: boolean;
+  title?: string;
+  description?: string;
+  tags?: string[];
+  key?: string;
+  mode?: string;
+  enter?: boolean;
+  filename?: string;
+  footer?: boolean;
+}
+
+/** tprompt export-channel report (availability + resolved namespace). */
+export interface TpromptReport {
+  /** tprompt binary on PATH — the channel probe (ADR 0008). */
+  available: boolean;
+  /** Primary prompts dir (the only write target). */
+  promptsDir: string;
+  /** Additional namespace dirs scanned for collisions (never written). */
+  additionalDirs: string[];
+  /** tprompt config.toml that was read, if any. */
+  configPath?: string;
 }
 
 /**
@@ -207,6 +237,9 @@ export interface Placement {
   derived?: boolean;
   /** agent-definition render dialect (rendered-file placements only). */
   renderDialect?: AgentDefDialect;
+  /** Export channel this placement belongs to. "tprompt" routes rendering + prune
+   *  through the tprompt channel; absent means the harness/skill placement. */
+  channel?: "tprompt";
   /** Incidental readers of this dir beyond the intended agent(s). */
   bleed?: string[];
   /** Chosen dir is registry-flagged deprecated (e.g. codex dir); plan warns. */
@@ -295,6 +328,8 @@ export interface Plan {
   unsafe: DriftFinding[];
   /** True when any prune action is present (apply needs --prune to execute them). */
   requiresPrune: boolean;
+  /** Export-channel status surfaced to plan/status output (ADR 0008). */
+  channels?: { tprompt: TpromptReport };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

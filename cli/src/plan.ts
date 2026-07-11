@@ -14,6 +14,8 @@ import { privacyViolation } from "./privacy";
 import { hashContent, renderedHash } from "./render";
 import { classifyTarget, scanEntry } from "./scan";
 import { findOwner } from "./state";
+import { resolveTpromptCollisions } from "./tprompt/channel";
+import { tpromptPromptHash } from "./tprompt/render";
 import type {
   DesiredPlacement,
 } from "./placements";
@@ -63,6 +65,17 @@ export function buildPlan(
 
   const desiredPaths = new Set<string>(solved.placements.map((dp) => path.resolve(dp.placement.path)));
 
+  // tprompt flat-namespace collision guard: foreign prompts sharing a desired stem
+  // are reported + skipped for that placement only (ADR 0006), never failing the
+  // rest of the plan. skm-vs-skm clashes already hard-failed in the resolver.
+  const tpromptPlacements = solved.placements.filter((dp) => dp.placement.channel === "tprompt");
+  const { skip: tpromptSkip, foreign: tpromptForeign } = resolveTpromptCollisions(
+    solved.tprompt,
+    tpromptPlacements,
+    state,
+  );
+  foreign.push(...tpromptForeign);
+
   for (const dp of solved.placements) {
     const p = dp.placement;
 
@@ -94,7 +107,10 @@ export function buildPlan(
       });
     }
 
-    if (p.artifactType === "agent-def") {
+    if (p.channel === "tprompt") {
+      // Foreign stem collision → reported above, skip this placement only.
+      if (!tpromptSkip.has(path.resolve(p.path))) diffTpromptFile(env, dp, state, actions, warnings, foreign);
+    } else if (p.artifactType === "agent-def") {
       diffAgentDefFile(env, dp, state, actions, warnings, foreign);
     } else if (p.kind === "rendered") {
       diffRendered(env, dp, state, actions, warnings, foreign);
@@ -103,7 +119,7 @@ export function buildPlan(
     }
   }
 
-  const requiresPrune = collectPrunes(env, desiredPaths, state, actions);
+  const requiresPrune = collectPrunes(env, desiredPaths, state, actions, solved.tprompt.available);
   const planHash = planHashOf(desired.hash, actions, requiresPrune);
 
   return {
@@ -119,6 +135,7 @@ export function buildPlan(
     foreign,
     unsafe,
     requiresPrune,
+    channels: { tprompt: solved.tprompt },
   };
 }
 
@@ -157,6 +174,9 @@ export function planHashOf(
           artifactType: a.placement.artifactType ?? "skill",
           derived: a.placement.derived ?? null,
           renderDialect: a.placement.renderDialect ?? null,
+          // Export channel: omitting it would let a reviewed --plan flip a tprompt
+          // prompt to a harness placement (or vice versa) at the same path.
+          channel: a.placement.channel ?? null,
         },
         // Prune actions carry an empty source path → normalize to null.
         source: a.source
@@ -374,12 +394,65 @@ function diffAgentDefFile(
   }
 }
 
+/**
+ * Diff a single tprompt prompt-file placement (ADR 0008). Structurally mirrors
+ * diffAgentDefFile — an owned rendered file compared by content hash — but re-renders
+ * through the tprompt channel: absent → create; owned + hash match → noop/update; a
+ * hand-edited owned file → warned (not overwritten); an unowned matching file → adopt;
+ * anything else → foreign.
+ */
+function diffTpromptFile(
+  env: SkmEnv,
+  dp: DesiredPlacement,
+  state: StateFile,
+  actions: PlannedAction[],
+  warnings: Warning[],
+  foreign: DriftFinding[],
+): void {
+  const p = dp.placement;
+  const expectedHash = tpromptPromptHash(p.artifactType ?? "skill", dp.source.path);
+  const rendered: Placement = { ...p, hash: expectedHash };
+  const owner = findOwner(state, p.path);
+  const entry = scanEntry(env, p.path);
+
+  if (entry.kind === "absent") {
+    actions.push(baseAction(dp, "create", rendered));
+    return;
+  }
+  if (entry.kind === "file") {
+    const diskHash = hashContent(fs.readFileSync(p.path, "utf8"));
+    if (owner) {
+      if (diskHash === owner.placement.hash) {
+        actions.push(baseAction(dp, owner.placement.hash === expectedHash ? "noop" : "update", rendered));
+      } else {
+        warnings.push({
+          kind: "modified",
+          skill: dp.skill,
+          message: `tprompt prompt '${dp.skill}' at ${p.path} was hand-edited; not overwritten (remove it and re-apply to restore skm's render)`,
+        });
+      }
+    } else if (diskHash === expectedHash) {
+      actions.push(baseAction(dp, "adopt", rendered));
+    } else {
+      foreign.push({ drift: "foreign", skill: dp.skill, path: p.path, detail: "unmanaged file at tprompt target" });
+    }
+    return;
+  }
+  // A symlink/dir sits where a rendered prompt file belongs.
+  if (owner && entry.kind === "symlink") {
+    actions.push(baseAction(dp, "create", rendered));
+  } else {
+    foreign.push({ drift: "foreign", skill: dp.skill, path: p.path, detail: describeForeign(env, p.path) });
+  }
+}
+
 /** State-owned placements no longer desired become prune actions (hermes exempt). */
 function collectPrunes(
   env: SkmEnv,
   desiredPaths: Set<string>,
   state: StateFile,
   actions: PlannedAction[],
+  tpromptAvailable: boolean,
 ): boolean {
   let requiresPrune = false;
   for (const artifact of Object.values(state.artifacts)) {
@@ -387,6 +460,11 @@ function collectPrunes(
       const abs = path.resolve(expandTilde(env, sp.path));
       if (desiredPaths.has(abs)) continue;
       if (sp.agent === "hermes") continue; // add-only: never pruned
+      // tprompt channel unavailable → never prune owned prompts (ADR 0008): the
+      // probe being down is not evidence the export is no longer wanted. When the
+      // channel is up, a prompt not in desiredPaths means the block was removed
+      // (or the artifact deleted) → prune normally.
+      if (sp.agent === "tprompt" && !tpromptAvailable) continue;
       const placement: Placement = {
         agent: sp.agent,
         dir: sp.agent,
@@ -394,6 +472,7 @@ function collectPrunes(
         kind: sp.kind,
         hash: sp.hash,
         artifactType: artifact.type,
+        ...(sp.agent === "tprompt" ? { channel: "tprompt" as const } : {}),
       };
       actions.push({ type: "prune", skill: artifact.name, placement, source: { root: artifact.source.root, visibility: artifact.source.visibility, path: "" } });
       requiresPrune = true;
@@ -432,6 +511,10 @@ function renderPlanHuman(plan: Plan): string {
   for (const b of plan.bleed) lines.push(`  · bleed: ${b.skill} @ ${b.path} visible to ${b.readers.join(", ")}`);
   for (const f of plan.foreign) lines.push(`  × foreign: ${f.path} (${f.detail})`);
   for (const s of plan.unsafe) lines.push(`  ⚠ unsafe: ${s.skill} → ${s.path} (${s.detail})`);
+  const tp = plan.channels?.tprompt;
+  if (tp && !tp.available) {
+    lines.push(`  · channel tprompt: unavailable (tprompt not on PATH); prompts not written, existing left untouched`);
+  }
   if (plan.requiresPrune) lines.push("  (prune actions present; re-run apply with --prune to execute)");
   return lines.join("\n");
 }

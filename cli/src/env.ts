@@ -4,6 +4,7 @@
 // Determinism: time comes from clock.now(), machine name is injected — no
 // Date.now()/os.hostname() sprinkled through business logic.
 
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
@@ -27,6 +28,12 @@ export interface SkmEnv {
   machineName: string;
   /** Injected clock. */
   clock: Clock;
+  /**
+   * tprompt-channel availability probe (ADR 0008): true when the `tprompt` binary
+   * is on PATH. Injected so tests decide availability without touching the machine.
+   * Absent → channel treated as unavailable (safe: no writes, no prunes).
+   */
+  tpromptProbe?: () => boolean;
 }
 
 /** Production environment: real home, process env, wall-clock, real hostname. */
@@ -38,7 +45,22 @@ export function realEnv(): SkmEnv {
     copilotHome: process.env.COPILOT_HOME || undefined,
     machineName: os.hostname(),
     clock: { now: () => new Date().toISOString() },
+    tpromptProbe: () => binaryOnPath("tprompt"),
   };
+}
+
+/** True when an executable named `bin` exists on any PATH directory. */
+function binaryOnPath(bin: string): boolean {
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    try {
+      fs.accessSync(path.join(dir, bin), fs.constants.X_OK);
+      return true;
+    } catch {
+      /* not here; keep scanning */
+    }
+  }
+  return false;
 }
 
 /** ~/.config or $XDG_CONFIG_HOME. */

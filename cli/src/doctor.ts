@@ -99,14 +99,15 @@ export function diagnose(
         const fixable = !derivedRenderedPaths.has(path.resolve(expandTilde(env, sp.path)));
         findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "rendered artifact hand-edited (hash mismatch)", fixable });
       } else if (sp.kind === "rendered-file") {
+        const noun = sp.agent === "tprompt" ? "tprompt prompt" : "agent-def file";
         if (entry.kind === "absent") {
-          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: "owned agent-def file missing", fixable: false });
+          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned ${noun} missing`, fixable: false });
         } else if (entry.kind !== "file") {
           // A dir or symlink replaced the rendered file → not skm's render, and the
           // file-hash branch below would silently skip it; flag it like a missing file.
-          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned agent-def file replaced by ${entry.kind}`, fixable: false });
+          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned ${noun} replaced by ${entry.kind}`, fixable: false });
         } else if (hashContent(fs.readFileSync(expandTilde(env, sp.path), "utf8")) !== sp.hash) {
-          findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "agent-def file hand-edited (hash mismatch)", fixable: false });
+          findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: `${noun} hand-edited (hash mismatch)`, fixable: false });
         }
       }
     }
@@ -162,6 +163,7 @@ function agentDefSkillReferences(
   const skillReaders = new Map<string, Set<string>>();
   for (const dp of solved.placements) {
     if (dp.placement.artifactType === "agent-def") continue;
+    if (dp.placement.channel === "tprompt") continue; // tprompt is a human channel, not a harness reader
     const set = skillReaders.get(dp.skill) ?? new Set<string>();
     for (const reader of readersOf(registry, dp.placement.dir, { includeMaybe: true })) set.add(reader);
     skillReaders.set(dp.skill, set);
@@ -177,6 +179,7 @@ function agentDefSkillReferences(
   for (const dp of solved.placements) {
     const def = dp.desiredAgentDef;
     if (dp.placement.artifactType !== "agent-def" || !def) continue;
+    if (dp.placement.channel === "tprompt") continue; // prompt export targets no harness
     const harness = dp.placement.agent;
     for (const wanted of def.def.skills) {
       const key = `${def.name}:${wanted}:${harness}`;

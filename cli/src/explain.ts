@@ -7,6 +7,7 @@ import { UsageError } from "./errors";
 import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements } from "./placements";
 import { solvePlacements } from "./solver";
+import { computeTpromptPlacements } from "./tprompt/channel";
 import type {
   ArtifactType,
   DesiredState,
@@ -42,6 +43,8 @@ export function explainSkill(
   if (skill) {
     const solved = solvePlacements(skill, config, registry);
     const placements: Placement[] = solved.placements.map((p) => ({ ...p, path: expandTilde(env, p.path) }));
+    // Include the skill's tprompt prompt placement (ADR 0008) when the channel is up.
+    for (const dp of computeTpromptPlacements(env, [skill], []).placements) placements.push(dp.placement);
     return assemble("skill", skill.name, skill.source, skill.scoping, placements, solved.unreachable);
   }
 

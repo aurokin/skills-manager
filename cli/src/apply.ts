@@ -22,6 +22,7 @@ import { privacyViolation } from "./privacy";
 import { loadRegistry } from "./registry";
 import { hashContent, renderSkill, renderedHash, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
+import { renderTpromptPrompt, tpromptPromptHash } from "./tprompt/render";
 import { scanEntry } from "./scan";
 import {
   artifactKey,
@@ -204,7 +205,19 @@ function materialize(
   fs.mkdirSync(path.dirname(abs), { recursive: true }); // create the agent dir per registry (agentDefDir created on demand)
   const source = { root: src.root, visibility: src.visibility };
 
-  if (p.artifactType === "agent-def") {
+  if (p.channel === "tprompt") {
+    // tprompt prompt file (ADR 0008): render the artifact's prompt and write it
+    // atomically into the prompts dir (no subprocess scaffolding). Re-render from
+    // the current source and refuse if it drifted from the reviewed hash.
+    const artifactType = p.artifactType ?? "skill";
+    if (p.hash && tpromptPromptHash(artifactType, src.path) !== p.hash) {
+      return { drift: "stale", skill: action.skill, path: abs, detail: "tprompt render changed since plan; re-run plan" };
+    }
+    const text = renderTpromptPrompt(artifactType, src.path);
+    removeExisting(abs);
+    fs.writeFileSync(abs, text);
+    upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered-file", hash: hashContent(text) });
+  } else if (p.artifactType === "agent-def") {
     // Single rendered file in a harness's agentDefDir. Re-render from the current
     // source and refuse if it drifted from the reviewed hash (finding 1).
     if (p.hash && agentDefFileHash(src.path, p.renderDialect!) !== p.hash) {

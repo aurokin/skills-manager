@@ -12,6 +12,8 @@ import { isAgentDefDir, loadAgentDefinitionFromDir } from "./agentdef/source";
 import { loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
 import { CollisionError } from "./errors";
 import type { SkmEnv } from "./env";
+import { assertNoTpromptStemCollisions } from "./tprompt/channel";
+import { parseSkillTpromptBlock } from "./tprompt/spec";
 import { loadOverlay } from "./overlay";
 import { enabledAgents } from "./registry";
 import type {
@@ -72,7 +74,8 @@ export function resolveDesiredState(
         const skillMd = path.join(skillDir, "SKILL.md");
         if (!fs.existsSync(skillMd)) continue; // a dir without SKILL.md is not a skill
 
-        checkFrontmatter(skillMd, name, warnings);
+        const fm = parseFrontmatter(fs.readFileSync(skillMd, "utf8"));
+        checkFrontmatter(fm, name, warnings);
 
         const desired: DesiredSkill = {
           name,
@@ -81,6 +84,9 @@ export function resolveDesiredState(
         };
         const scope = scopingForSkill(scoping, name);
         if (scope) desired.scoping = scope;
+        // Optional `tprompt:` export block (ADR 0008); invalid blocks throw here.
+        const tp = parseSkillTpromptBlock(fm, skillMd);
+        if (tp.enabled) desired.tprompt = tp;
 
         if (byName.has(name)) {
           warnings.push({
@@ -134,6 +140,10 @@ export function resolveDesiredState(
   const skills = [...byName.values()].sort(byNameAsc);
   const agentDefs = [...defByName.values()].sort(byNameAsc);
   assertNoDerivedSkillCollisions(skills, agentDefs);
+  // tprompt flat-namespace guard: two skm artifacts resolving to the same prompt
+  // stem is an authoring error, caught before any mutation (ADR 0008), regardless
+  // of channel availability.
+  assertNoTpromptStemCollisions(skills, agentDefs);
   return { skills, agentDefs, warnings, hash: hashDesiredState(skills, agentDefs) };
 }
 
@@ -172,6 +182,10 @@ export function hashDesiredState(skills: DesiredSkill[], agentDefs: DesiredAgent
     path: s.source.path,
     scoping: normalizeScopeForHash(s.scoping),
     overrides: Object.keys(s.overrides).sort(),
+    // tprompt SELECTION fields (enabled + stem-determining filename) so a plan is
+    // refused when a block is added/removed/renamed; render-content edits are
+    // caught by the apply-time hash re-check, like skills.
+    tprompt: normalizeTpromptForHash(s.tprompt),
   }));
   // Agent-def source-content edits are caught by the apply-time render-hash
   // re-check (like skills); the desired-state hash tracks only the stable
@@ -185,6 +199,7 @@ export function hashDesiredState(skills: DesiredSkill[], agentDefs: DesiredAgent
     export: d.exportMode,
     derived: d.derivedSkillName ?? null,
     scoping: normalizeScopeForHash(d.scoping),
+    tprompt: normalizeTpromptForHash(d.def.tprompt),
   }));
   const payload = JSON.stringify({ skills: canonicalSkills, agentDefs: canonicalDefs });
   return `sha256:${crypto.createHash("sha256").update(payload).digest("hex")}`;
@@ -211,8 +226,7 @@ function detectOverrides(skillDir: string): AgentOverrides {
   return out;
 }
 
-function checkFrontmatter(skillMd: string, name: string, warnings: Warning[]): void {
-  const fm = parseFrontmatter(fs.readFileSync(skillMd, "utf8"));
+function checkFrontmatter(fm: unknown, name: string, warnings: Warning[]): void {
   if (typeof fm !== "object" || fm === null || Array.isArray(fm)) {
     warnings.push(frontmatterWarn(name, "SKILL.md has no readable YAML frontmatter"));
     return;
@@ -238,6 +252,12 @@ function parseFrontmatter(content: string): unknown {
 
 function frontmatterWarn(skill: string, message: string): Warning {
   return { kind: "frontmatter", skill, message };
+}
+
+/** Selection-relevant view of a tprompt block for the desired-state hash. */
+function normalizeTpromptForHash(block?: { enabled: boolean; filename?: string }): unknown {
+  if (!block || !block.enabled) return null;
+  return { filename: block.filename ?? null };
 }
 
 function normalizeScopeForHash(scope?: AgentScope): unknown {

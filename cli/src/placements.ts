@@ -10,6 +10,7 @@ import { agentDefExt } from "./agentdef/artifact";
 import { type SkmEnv, expandTilde, resolveCopilotHome } from "./env";
 import { enabledAgents } from "./registry";
 import { solvePlacements } from "./solver";
+import { computeTpromptPlacements } from "./tprompt/channel";
 import type {
   AgentCapability,
   AgentDefDialect,
@@ -23,6 +24,7 @@ import type {
   Placement,
   Registry,
   SkillSource,
+  TpromptReport,
   UnreachableEntry,
 } from "./types";
 
@@ -41,6 +43,8 @@ export interface SolvedDesired {
   placements: DesiredPlacement[];
   unreachable: UnreachableEntry[];
   bleed: BleedEntry[];
+  /** tprompt export-channel report (ADR 0008): availability + resolved namespace. */
+  tprompt: TpromptReport;
 }
 
 /** First-party dir id → rendering dialect (only these dirs ever render). */
@@ -115,7 +119,13 @@ export function computeDesiredPlacements(
     }
   }
 
-  return { placements, unreachable, bleed };
+  // tprompt export channel (ADR 0008): one owned rendered-file prompt per eligible
+  // skill / agent-def. Empty when the channel is unavailable; the report carries
+  // availability + the resolved namespace for plan/status display.
+  const tp = computeTpromptPlacements(env, desired.skills, desired.agentDefs);
+  placements.push(...tp.placements);
+
+  return { placements, unreachable, bleed, tprompt: tp.report };
 }
 
 /**
