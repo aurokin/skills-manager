@@ -11,10 +11,13 @@ import type { Artifact, ArtifactType, StateFile, StatePlacement } from "./types"
 // v2 added `tree` (full-artifact hash) to rendered placements for deletion safety
 // (finding 2). v3 (AUR-616) type-qualifies artifact keys (`skill:<name>` /
 // `agent-def:<name>`) and adds `type`/`name` to each Artifact so a derived skill
-// can never silently collide with a native skill. Older versions load fine and are
-// migrated forward in memory (see migrateState); only a NEWER-than-supported
-// version hard-fails, preserving the existing state.ts semantics.
-const STATE_VERSION = 3;
+// can never silently collide with a native skill. v4 (AUR-645) is a pure
+// forward-compatibility fence for the composed-skill artifact type: NO transform
+// body (v3 states are valid v4), the bump only makes an OLDER skm hard-fail instead
+// of mis-pruning composed rendered trees it would misread as generic rendered
+// artifacts. Older versions load fine and are migrated forward in memory (see
+// migrateState); only a NEWER-than-supported version hard-fails.
+const STATE_VERSION = 4;
 
 /** Type-qualified state key for an artifact. */
 export function artifactKey(type: ArtifactType, name: string): string {
@@ -84,8 +87,10 @@ function parseState(raw: string, file: string): StateFile {
  * Forward-migrate an older supported state file in memory (never on disk until the
  * next save). v1/v2 keyed artifacts by bare skill name and carried no type/name; v3
  * type-qualifies keys and stamps `type`/`name`. Every pre-v3 entry is a skill, so it
- * gets the `skill:` prefix and `type: "skill"`. Newer-than-supported was already
- * rejected above, so this only ever upgrades.
+ * gets the `skill:` prefix and `type: "skill"`. v3→v4 is a pure version bump (no
+ * shape change) — a v3 file's already-qualified entries pass through untouched and
+ * are re-stamped with version 4. Newer-than-supported was already rejected above, so
+ * this only ever upgrades.
  */
 function migrateState(state: StateFile): StateFile {
   if (state.version >= STATE_VERSION) return state;

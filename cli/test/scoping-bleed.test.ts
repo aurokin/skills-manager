@@ -23,7 +23,7 @@ function skill(name: string, scoping: DesiredSkill["scoping"]): DesiredSkill {
   };
 }
 function desiredOf(skills: DesiredSkill[]): DesiredState {
-  return { skills, agentDefs: [], warnings: [], hash: "sha256:test" };
+  return { skills, agentDefs: [], composedSkills: [], warnings: [], hash: "sha256:test" };
 }
 
 const registry = loadRegistry(realRegistryPath());

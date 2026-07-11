@@ -9,6 +9,7 @@ import { parse as parseYaml } from "yaml";
 import { deriveSkillName } from "./agentdef/dialects/derived-skill";
 import { scopingForAgentDef } from "./agentdef/scoping";
 import { isAgentDefDir, loadAgentDefinitionFromDir } from "./agentdef/source";
+import { isComposedDir, loadComposedSkillFromDir } from "./composed/source";
 import { loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
 import { CollisionError } from "./errors";
 import type { SkmEnv } from "./env";
@@ -20,6 +21,7 @@ import type {
   AgentOverrides,
   AgentScope,
   DesiredAgentDef,
+  DesiredComposedSkill,
   DesiredSkill,
   DesiredState,
   MachineConfig,
@@ -55,6 +57,9 @@ export function resolveDesiredState(
   const ownerRoot = new Map<string, string>();
   const defByName = new Map<string, DesiredAgentDef>();
   const defOwnerRoot = new Map<string, string>();
+  const composedByName = new Map<string, DesiredComposedSkill>();
+  const composedWarnings = new Map<string, Warning[]>();
+  const composedOwnerRoot = new Map<string, string>();
   const enabled = enabledAgents(config, registry);
 
   for (const root of config.roots) {
@@ -135,24 +140,71 @@ export function resolveDesiredState(
         defOwnerRoot.set(name, root.name);
       }
     }
+
+    // Composed skills: <root>/composed/<name>/ (skill.yaml marker), parallel to
+    // skills/ and agents/. Later root wins on a name collision, like skills. A dir
+    // without skill.yaml is skipped silently (footgun avoidance, ADR 0010).
+    const composedDir = path.join(root.path, "composed");
+    if (fs.existsSync(composedDir)) {
+      const names = fs
+        .readdirSync(composedDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
+
+      for (const name of names) {
+        const srcDir = path.join(composedDir, name);
+        if (!isComposedDir(srcDir)) continue; // a dir without skill.yaml is not composed
+
+        const source = { root: root.name, visibility: root.visibility, path: srcDir };
+        const { skill, warnings: skillWarnings } = loadComposedSkillFromDir(srcDir, name, source, registry);
+
+        if (composedByName.has(name)) {
+          warnings.push({
+            kind: "collision",
+            skill: name,
+            message: `composed skill '${name}' defined in roots '${composedOwnerRoot.get(name)}' and '${root.name}'; '${root.name}' wins`,
+          });
+        }
+        composedByName.set(name, skill);
+        composedWarnings.set(name, skillWarnings);
+        composedOwnerRoot.set(name, root.name);
+      }
+    }
   }
 
   const skills = [...byName.values()].sort(byNameAsc);
   const agentDefs = [...defByName.values()].sort(byNameAsc);
-  assertNoDerivedSkillCollisions(skills, agentDefs);
+  const composedSkills = [...composedByName.values()].sort(byNameAsc);
+  // Composed-skill warnings from the winning root only (later root wins).
+  for (const composed of composedSkills) {
+    warnings.push(...(composedWarnings.get(composed.name) ?? []));
+  }
+  assertNoDerivedSkillCollisions(skills, agentDefs, composedSkills);
   // tprompt flat-namespace guard: two skm artifacts resolving to the same prompt
   // stem is an authoring error, caught before any mutation (ADR 0008), regardless
   // of channel availability.
   assertNoTpromptStemCollisions(skills, agentDefs);
-  return { skills, agentDefs, warnings, hash: hashDesiredState(skills, agentDefs) };
+  return {
+    skills,
+    agentDefs,
+    composedSkills,
+    warnings,
+    hash: hashDesiredState(skills, agentDefs, composedSkills),
+  };
 }
 
 /**
- * A derived skill (export "skill") shares the skill namespace and placement paths
- * with native skills, so a normalized-name clash is an authoring error that must
- * hard-fail deterministically before any mutation (naming both artifacts).
+ * Derived skills (export "skill") and composed skills both share the skill output
+ * namespace and placement paths with native skills, so a name clash across any two
+ * of the three is an authoring error that must hard-fail deterministically before
+ * any mutation (naming both artifacts).
  */
-function assertNoDerivedSkillCollisions(skills: DesiredSkill[], agentDefs: DesiredAgentDef[]): void {
+function assertNoDerivedSkillCollisions(
+  skills: DesiredSkill[],
+  agentDefs: DesiredAgentDef[],
+  composedSkills: DesiredComposedSkill[] = [],
+): void {
   const nativeNames = new Set(skills.map((s) => s.name));
   const derivedOwner = new Map<string, string>();
   for (const def of agentDefs) {
@@ -171,10 +223,27 @@ function assertNoDerivedSkillCollisions(skills: DesiredSkill[], agentDefs: Desir
     }
     derivedOwner.set(derived, def.name);
   }
+  for (const composed of composedSkills) {
+    if (nativeNames.has(composed.name)) {
+      throw new CollisionError(
+        `composed skill '${composed.name}' collides with native skill '${composed.name}'`,
+      );
+    }
+    const derivedFrom = derivedOwner.get(composed.name);
+    if (derivedFrom !== undefined) {
+      throw new CollisionError(
+        `composed skill '${composed.name}' collides with derived skill '${composed.name}' from agent definition '${derivedFrom}'`,
+      );
+    }
+  }
 }
 
-/** Stable content hash of the desired skill + agent-def set (apply --plan precondition). */
-export function hashDesiredState(skills: DesiredSkill[], agentDefs: DesiredAgentDef[] = []): string {
+/** Stable content hash of the desired skill + agent-def + composed set (apply --plan precondition). */
+export function hashDesiredState(
+  skills: DesiredSkill[],
+  agentDefs: DesiredAgentDef[] = [],
+  composedSkills: DesiredComposedSkill[] = [],
+): string {
   const canonicalSkills = [...skills].sort(byNameAsc).map((s) => ({
     name: s.name,
     root: s.source.root,
@@ -201,7 +270,30 @@ export function hashDesiredState(skills: DesiredSkill[], agentDefs: DesiredAgent
     scoping: normalizeScopeForHash(d.scoping),
     tprompt: normalizeTpromptForHash(d.def.tprompt),
   }));
-  const payload = JSON.stringify({ skills: canonicalSkills, agentDefs: canonicalDefs });
+  // Composed skills track SELECTION identity only ({name, root, visibility, path,
+  // posture, consumers}); provider/dimension/template CONTENT edits are caught by
+  // the apply-time render-hash re-check (like skills/agent-defs), so a plan is
+  // refused when WHICH composed skills exist, their posture, or their consumer set
+  // (names + descriptions + selfProvider acks) changes.
+  const canonicalComposed = [...composedSkills].sort(byNameAsc).map((c) => ({
+    name: c.name,
+    root: c.source.root,
+    visibility: c.source.visibility,
+    path: c.source.path,
+    posture: c.posture,
+    consumers: Object.keys(c.consumers)
+      .sort()
+      .map((id) => ({
+        name: id,
+        description: c.consumers[id]!.description,
+        selfProvider: c.consumers[id]!.selfProvider ?? null,
+      })),
+  }));
+  const payload = JSON.stringify({
+    skills: canonicalSkills,
+    agentDefs: canonicalDefs,
+    composedSkills: canonicalComposed,
+  });
   return `sha256:${crypto.createHash("sha256").update(payload).digest("hex")}`;
 }
 
@@ -266,6 +358,6 @@ function normalizeScopeForHash(scope?: AgentScope): unknown {
   return { deny: [...(scope.deny ?? [])].sort() };
 }
 
-function byNameAsc(a: DesiredSkill, b: DesiredSkill): number {
+function byNameAsc(a: { name: string }, b: { name: string }): number {
   return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 }

@@ -147,6 +147,49 @@ export function makeAgentDef(
   return dir;
 }
 
+/**
+ * Create composed/<name>/ under a root path (AUR-645): skill.yaml (+ SKILL.tmpl.md,
+ * providers/*.md, consumers/*.md). `skillYaml` is stringified as YAML; `rawSkillYaml`
+ * writes verbatim text. `providers`/`consumers` map an id → full file text. The
+ * template is written unless `omitTemplate` is set. Returns the composed source dir.
+ */
+export function makeComposed(
+  rootPath: string,
+  name: string,
+  opts: {
+    skillYaml?: Record<string, unknown>;
+    rawSkillYaml?: string;
+    template?: string;
+    omitTemplate?: boolean;
+    providers?: Record<string, string>;
+    consumers?: Record<string, string>;
+  } = {},
+): string {
+  const dir = path.join(rootPath, "composed", name);
+  fs.mkdirSync(dir, { recursive: true });
+  const yamlText = opts.rawSkillYaml ?? stringify({ name, ...(opts.skillYaml ?? {}) });
+  fs.writeFileSync(path.join(dir, "skill.yaml"), yamlText);
+
+  if (!opts.omitTemplate) {
+    fs.writeFileSync(path.join(dir, "SKILL.tmpl.md"), opts.template ?? "Orchestrate.\n\n{{routing_table}}\n");
+  }
+  if (opts.providers) {
+    const pdir = path.join(dir, "providers");
+    fs.mkdirSync(pdir, { recursive: true });
+    for (const [id, text] of Object.entries(opts.providers)) {
+      fs.writeFileSync(path.join(pdir, `${id}.md`), text);
+    }
+  }
+  if (opts.consumers) {
+    const cdir = path.join(dir, "consumers");
+    fs.mkdirSync(cdir, { recursive: true });
+    for (const [id, text] of Object.entries(opts.consumers)) {
+      fs.writeFileSync(path.join(cdir, `${id}.md`), text);
+    }
+  }
+  return dir;
+}
+
 /** Write an overlay.json at a root path. */
 export function makeOverlay(
   rootPath: string,

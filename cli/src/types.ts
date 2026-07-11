@@ -6,12 +6,14 @@ import type { SkmEnv } from "./env";
 import type { AgentDefinition } from "./agentdef/schema";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Artifact type (AUR-616). skm manages two artifact types now: skills and agent
-// definitions. State keys are type-qualified (`skill:<name>` / `agent-def:<name>`)
-// so a derived skill can never silently collide with a native skill.
+// Artifact type (AUR-616, AUR-645). skm manages three artifact types now: skills,
+// agent definitions, and composed skills (per-consumer rendered skills, ADR 0010).
+// State keys are type-qualified (`skill:<name>` / `agent-def:<name>` /
+// `composed-skill:<name>`) so a derived or composed skill can never silently
+// collide with a native skill.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type ArtifactType = "skill" | "agent-def";
+export type ArtifactType = "skill" | "agent-def" | "composed-skill";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent capability registry (registry/agents.json). The record KEY is the id;
@@ -201,10 +203,98 @@ export interface DesiredAgentDef {
   def: AgentDefinition;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Composed skill (AUR-645, ADR 0010). A per-consumer rendered skill sourced from
+// `<root>/composed/<name>/` (skill.yaml + SKILL.tmpl.md + providers/*.md +
+// consumers/*.md). Like DesiredAgentDef, the parsed source is carried in memory
+// only (never serialized); apply --plan re-reads it from `source.path`. The render
+// (bytes = f(source, consumer, posture)) and placement fan-out land in AUR-646.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Compile-time deployment posture. Absent in skill.yaml defaults to "sandboxed". */
+export type Posture = "sandboxed" | "yolo";
+
+/** One model entry in a provider file's frontmatter `models` map. */
+export interface ComposedProviderModel {
+  /** The provider CLI's default model (at most one per provider by convention). */
+  default?: boolean;
+}
+
+/**
+ * A provider reference file (`providers/<id>.md`): YAML frontmatter (the provider
+ * registry) + a markdown body. The provider id is the filename basename and must
+ * match a registry directory id.
+ */
+export interface ComposedProvider {
+  /** Frontmatter `name`. */
+  name: string;
+  /** Provider CLI binary (frontmatter `cli`). */
+  cli: string;
+  /** Frontmatter `models` map (model id → flags). */
+  models: Record<string, ComposedProviderModel>;
+  /** Frontmatter `verified` provenance line, if present. */
+  verified?: string;
+  /** Markdown body after the frontmatter (posture markers unfiltered). */
+  body: string;
+}
+
+/** One ranked candidate in a dimension: a provider + the model to invoke it with. */
+export interface ComposedCandidate {
+  /** Provider id (a `providers/*.md` basename). */
+  provider: string;
+  /** Model id — must appear in that provider's frontmatter `models`. */
+  model: string;
+  /** Optional per-candidate note (e.g. "fable on explicit request"). */
+  note?: string;
+}
+
+/** One routing dimension: an ordered candidate chain (ordering is the score). */
+export interface ComposedDimension {
+  key: string;
+  title?: string;
+  when?: string;
+  candidates: ComposedCandidate[];
+}
+
+/** A declared consumer entry in skill.yaml. */
+export interface ComposedConsumer {
+  /** Per-consumer frontmatter description (the loader's activation trigger). */
+  description: string;
+  /**
+   * Explicit acknowledgment that this consumer's derived self (registry ownDir)
+   * is NOT one of the declared providers. Only legal value is "none".
+   */
+  selfProvider?: "none";
+}
+
+/** The two marker-split sections of a `consumers/<c>.md` file (both optional). */
+export interface ComposedConsumerFile {
+  /** `<!-- @section gate -->` content, inserted before the routing table. */
+  gate?: string;
+  /** `<!-- @section appendix -->` content, inserted at end of body. */
+  appendix?: string;
+}
+
+export interface DesiredComposedSkill {
+  name: string;
+  source: SkillSource;
+  posture: Posture;
+  /** Declared consumers keyed by agent id. */
+  consumers: Record<string, ComposedConsumer>;
+  /** Ordered routing dimensions. */
+  dimensions: ComposedDimension[];
+  /** Parsed provider reference files keyed by provider id. */
+  providers: Record<string, ComposedProvider>;
+  /** Parsed consumer-file sections keyed by consumer id (present iff the file exists). */
+  consumerFiles: Record<string, ComposedConsumerFile>;
+}
+
 export interface DesiredState {
   skills: DesiredSkill[];
   /** Resolved agent definitions (AUR-616). */
   agentDefs: DesiredAgentDef[];
+  /** Resolved composed skills (AUR-645). */
+  composedSkills: DesiredComposedSkill[];
   /** Collision / deprecation / bleed notices surfaced in plan/status. */
   warnings: Warning[];
   /** Stable hash of the desired set; apply --plan refuses if it changed. */
@@ -285,7 +375,9 @@ export type WarningKind =
   | "bleed"
   | "unscoped-shared"
   | "frontmatter"
-  | "modified";
+  | "modified"
+  // A composed-skill provider file on disk that no dimension references (AUR-645).
+  | "unused-provider";
 
 export interface Warning {
   kind: WarningKind;

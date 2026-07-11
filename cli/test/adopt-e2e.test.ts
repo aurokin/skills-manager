@@ -235,7 +235,7 @@ describe("adopt custom-agents (legacy + both locations)", () => {
   });
 });
 
-// ── old-state-version upgrade (v1 & v2 → v3) on read, through a real verb ──────
+// ── old-state-version upgrade (v1 & v2 → v4) on read, through a real verb ──────
 
 describe("state version upgrade on read", () => {
   function writeStateFile(version: number, artifacts: unknown): void {
@@ -244,7 +244,7 @@ describe("state version upgrade on read", () => {
     fs.writeFileSync(file, JSON.stringify({ version, machine: "sandbox", artifacts }));
   }
 
-  test("a v2 (bare-key, untyped) state file upgrades to v3 type-qualified keys in memory", () => {
+  test("a v2 (bare-key, untyped) state file upgrades to v4 type-qualified keys in memory", () => {
     writeStateFile(2, {
       alpha: {
         source: { root: "public", visibility: "public" },
@@ -252,7 +252,7 @@ describe("state version upgrade on read", () => {
       },
     });
     const state = loadState(sb.env);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(Object.keys(state.artifacts)).toEqual(["skill:alpha"]);
     expect(state.artifacts["skill:alpha"]!.type).toBe("skill");
     expect(state.artifacts["skill:alpha"]!.name).toBe("alpha");
@@ -266,7 +266,7 @@ describe("state version upgrade on read", () => {
       },
     });
     const state = loadState(sb.env);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.artifacts["skill:beta"]!.type).toBe("skill");
   });
 
@@ -287,7 +287,7 @@ describe("state version upgrade on read", () => {
 
     await runAdopt(sb.env, opts());
     const state = loadState(sb.env);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(Object.keys(state.artifacts).sort()).toEqual(["agent-def:rev", "skill:alpha"]);
   });
 });

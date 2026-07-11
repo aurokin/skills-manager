@@ -26,7 +26,7 @@ function placement(agent: string, p: string): StatePlacement {
 describe("emptyState", () => {
   test("has the current state version, the given machine, and no artifacts", () => {
     const s = emptyState("koopa");
-    expect(s).toEqual({ version: 3, machine: "koopa", artifacts: {} });
+    expect(s).toEqual({ version: 4, machine: "koopa", artifacts: {} });
   });
 });
 
@@ -46,7 +46,7 @@ describe("loadState", () => {
     expect(loadState(sandbox.env)).toEqual(s);
   });
 
-  test("forward-migrates a v2 (bare-key) state file to v3 type-qualified keys", () => {
+  test("forward-migrates a v2 (bare-key) state file to v4 type-qualified keys", () => {
     sandbox = makeSandbox();
     const file = statePath(sandbox.env);
     fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -61,7 +61,7 @@ describe("loadState", () => {
       }),
     );
     const loaded = loadState(sandbox.env);
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(4);
     expect(loaded.artifacts["skill:alpha"]).toEqual({
       type: "skill",
       name: "alpha",
@@ -71,11 +71,39 @@ describe("loadState", () => {
     expect(loaded.artifacts.alpha).toBeUndefined();
   });
 
+  test("a v3 file loads as v4 with its entries intact, and saves as v4", () => {
+    sandbox = makeSandbox();
+    const file = statePath(sandbox.env);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    // v3 already type-qualifies keys and carries type/name; v3→v4 is a pure bump.
+    const v3 = {
+      version: 3,
+      machine: "m",
+      artifacts: {
+        "skill:alpha": {
+          type: "skill",
+          name: "alpha",
+          source: { root: "public", visibility: "public" },
+          placements: [placement("shared", "/a/.agents/skills/alpha")],
+        },
+      },
+    };
+    fs.writeFileSync(file, JSON.stringify(v3));
+    const loaded = loadState(sandbox.env);
+    expect(loaded.version).toBe(4);
+    expect(loaded.artifacts["skill:alpha"]).toEqual(v3.artifacts["skill:alpha"] as never);
+    // persist + reload: still v4, entries intact.
+    saveState(sandbox.env, loaded);
+    const reloaded = loadState(sandbox.env);
+    expect(reloaded.version).toBe(4);
+    expect(reloaded).toEqual(loaded);
+  });
+
   test("hard-fails on a newer-than-supported state version", () => {
     sandbox = makeSandbox();
     const file = statePath(sandbox.env);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify({ version: 4, machine: "m", artifacts: {} }));
+    fs.writeFileSync(file, JSON.stringify({ version: 5, machine: "m", artifacts: {} }));
     expect(() => loadState(sandbox!.env)).toThrow(/newer than this skm supports/);
   });
 
