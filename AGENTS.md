@@ -1,8 +1,9 @@
 ## Purpose
 
-This repo manages a curated set of agent skills (for Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, optionally Hermes) via two mechanisms:
+This repo manages a curated set of agent skills (for Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, optionally Hermes) and agent definitions via these mechanisms:
 1. **Upstream skills** installed globally from GitHub repos using the `skills` CLI
 2. **Local skills** in `skills/` symlinked into `~/.agents/skills` and `~/.claude/skills`
+3. **Agent definitions** in `agents/` (one `agent.yaml` + `instructions.md` per subagent), rendered per-harness by `skm` into each agent's definitions dir (`~/.claude/agents/*.md`, `~/.codex/agents/*.toml`, `~/.copilot/agents/*.agent.md`, `~/.cursor/agents/*.md`, `~/.gemini/agents/*.md`, `~/.config/opencode/agent/*.md`)
 
 A TypeScript CLI (`skm`, under `cli/`, run with `bun`) is replacing the bash
 engine per `docs/skills-manager-design.md` and the ADRs in `docs/adr/`. It
@@ -55,9 +56,32 @@ When `hermes-agent` is in `SKILLS_AGENTS`:
 - `skills/agents-md/SKILL.md` — Generated from upstream `getsentry/skills@agents-md` by `maintenance/sync-agents-md.sh`. Do not hand-edit. The Commit Attribution section is removed. CI syncs it weekly.
 - `maintenance/test-agents-md.sh` — Validates the generated `agents-md` fork before it is written or committed.
 
+## Agent Definitions
+
+`agents/<name>/` holds one agent definition: `agent.yaml` (schema ported from
+the absorbed `custom_agents` tool) plus `instructions.md`. `skm plan/apply`
+renders each definition for every enabled harness that supports agent
+definitions, as owned, hash-gated files. Definitions may declare
+`harness.include/exclude` scoping, `export: agent|skill|none` (skill produces
+a derived SKILL.md instead), and an optional `tprompt:` block to also export a
+prompt for the `tprompt` CLI.
+
+The three shipped definitions (`plan-reviewer`, `codexrabbit-code-reviewer`,
+`retrorabbit-code-reviewer`) were migrated from `~/code/custom_agents` at
+cutover (AUR-618). That repo is archived; **running its `shared-agents` tool
+after cutover is forbidden** — two managers writing the same files corrupts
+skm's ownership state. The canonical `agent.yaml` is committed directly (the
+old gitignored-yaml + `.example` convention is not ported; personal overrides
+belong in a private overlay root or machine config).
+
 ## Adding a New Local Skill
 
 Create `skills/<name>/SKILL.md` with frontmatter and prompt content, then run either install script.
+
+## Adding a New Agent Definition
+
+Create `agents/<name>/agent.yaml` + `agents/<name>/instructions.md`, then run
+`skm plan` / `skm apply` (from `cli/`, via `bun`).
 
 ## Adding a New Upstream Skill
 

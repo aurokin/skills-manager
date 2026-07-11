@@ -1,11 +1,18 @@
 # Custom Skills
 
-Curated local and upstream skills for multiple coding agents.
+Curated local and upstream skills — plus agent definitions — for multiple coding agents.
 
 This repo has two distinct workflows:
 
 1. Global normalization for your personal always-on setup
 2. Project deployment for repo-specific skill families like Expo and Convex
+
+It also carries **agent definitions** under [`agents/`](agents/): one
+`agent.yaml` + `instructions.md` per subagent, rendered per-harness by `skm`
+into each agent's definitions dir (Claude, Codex, Copilot, Cursor, Gemini,
+OpenCode) and optionally exported as a derived skill or a `tprompt` prompt.
+These were absorbed from the retired `custom_agents` repo at cutover; running
+its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 
 > **In progress:** a TypeScript CLI (`skm`, under [`cli/`](cli/)) is replacing
 > the bash engine, adding agent-scoped skills, private overlay repos, and

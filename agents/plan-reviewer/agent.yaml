@@ -1,0 +1,19 @@
+name: plan-reviewer
+description: Skeptical review of implementation plans, design docs, or technical proposals.
+defaults:
+  sandbox: read-only
+  model_strategy: floating
+claude:
+  tools:
+    - Read
+    - Grep
+    - Glob
+  disallowed_tools:
+    - Write
+  permission_mode: default
+  max_turns: 16
+gemini:
+  tools:
+    - read_file
+    - grep_search
+  max_turns: 16
