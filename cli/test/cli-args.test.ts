@@ -31,3 +31,20 @@ test("apply --plan=<file> parses the inline form", () => {
   const { opts } = parseArgs(["apply", "--plan=/tmp/reviewed.json"]);
   expect(opts.planFile).toBe("/tmp/reviewed.json");
 });
+
+test("adopt custom-agents --agents-home <dir> parses the verb, subcommand, and flag", () => {
+  const { verb, opts } = parseArgs(["adopt", "custom-agents", "--agents-home", "/repo/agents"]);
+  expect(verb).toBe("adopt");
+  expect(opts.args).toEqual(["custom-agents"]);
+  expect(opts.agentsHome).toBe("/repo/agents");
+});
+
+test("adopt --agents-home=<dir> parses the inline form", () => {
+  const { opts } = parseArgs(["adopt", "custom-agents", "--agents-home=/repo/agents"]);
+  expect(opts.agentsHome).toBe("/repo/agents");
+});
+
+test("--agents-home with no operand is a usage error", () => {
+  expect(() => parseArgs(["adopt", "custom-agents", "--agents-home"])).toThrow(/--agents-home requires/);
+  expect(() => parseArgs(["adopt", "custom-agents", "--agents-home", "--json"])).toThrow(/--agents-home requires/);
+});

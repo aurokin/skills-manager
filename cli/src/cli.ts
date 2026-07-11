@@ -6,6 +6,7 @@
 import { UsageError } from "./errors";
 import { realEnv } from "./env";
 import type { VerbHandler, VerbOptions } from "./types";
+import { runAdopt } from "./adopt";
 import { runApply } from "./apply";
 import { runDoctor } from "./doctor";
 import { runExplain } from "./explain";
@@ -19,6 +20,7 @@ const VERBS: Record<string, VerbHandler> = {
   status: runStatus,
   doctor: runDoctor,
   explain: runExplain,
+  adopt: runAdopt,
   root: runRoot,
 };
 
@@ -34,6 +36,7 @@ export function parseArgs(argv: string[]): ParsedInvocation {
   let yes = false;
   let fix = false;
   let planFile: string | undefined;
+  let agentsHome: string | undefined;
   const args: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -63,12 +66,22 @@ export function parseArgs(argv: string[]): ParsedInvocation {
       const value = a.slice("--plan=".length);
       if (value === "") throw new UsageError("--plan requires a plan file path");
       planFile = value;
+    } else if (a === "--agents-home") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("-")) {
+        throw new UsageError("--agents-home requires a directory path");
+      }
+      agentsHome = value;
+    } else if (a.startsWith("--agents-home=")) {
+      const value = a.slice("--agents-home=".length);
+      if (value === "") throw new UsageError("--agents-home requires a directory path");
+      agentsHome = value;
     }
     else if (a.startsWith("-")) throw new UsageError(`unknown flag: ${a}`);
     else args.push(a);
   }
 
-  return { verb, opts: { json, prune, yes, planFile, fix, args } };
+  return { verb, opts: { json, prune, yes, planFile, fix, agentsHome, args } };
 }
 
 const USAGE = `skm — skills manager (local skills placement engine)
@@ -79,6 +92,7 @@ Usage:
   skm status  [--json]                     drift: missing|stale|modified|foreign|unsafe
   skm doctor  [--json] [--fix]             leaks, broken links, deny-guarantee checks
   skm explain <skill> [--json]             source, scoping, placements, bleed
+  skm adopt   custom-agents [--agents-home <dir>]  take ownership of manifest agent-def files
   skm root    add|list|remove [<path>]     edit machine config roots
 
 Exit codes: 0 clean · 1 error · 2 changes pending / drift`;

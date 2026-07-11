@@ -190,7 +190,7 @@ describe("scanForForeign", () => {
     fs.symlinkSync(makeSkill(root.path, "stranger"), foreignTarget);
 
     const state = emptyState("m");
-    recordArtifact(state, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(state, "skill:alpha", { root: "public", visibility: "public" }, [
       { agent: "shared", path: ownedTarget, kind: "symlink" },
     ]);
 

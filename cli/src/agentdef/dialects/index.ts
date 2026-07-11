@@ -18,12 +18,18 @@ import type { AgentDefinition } from "../schema";
 import type { Document } from "../../render/doc";
 import { emitterFor, type DialectName } from "../../render/emit";
 import { buildClaudeDocument } from "./claude";
+import { buildCodexDocument } from "./codex";
+import { buildCopilotDocument } from "./copilot";
 import { buildCursorDocument } from "./cursor";
 import { buildGeminiDocument } from "./gemini";
+import { buildOpencodeDocument } from "./opencode";
 
 export { buildClaudeDocument } from "./claude";
+export { buildCodexDocument } from "./codex";
+export { buildCopilotDocument } from "./copilot";
 export { buildCursorDocument } from "./cursor";
 export { buildGeminiDocument } from "./gemini";
+export { buildOpencodeDocument } from "./opencode";
 
 /** A pure dialect builder. */
 export type DialectBuilder = (agent: AgentDefinition) => Document;
@@ -34,8 +40,11 @@ const FULL_DOCUMENT_DIALECTS = new Set<DialectName>(["agentdef-codex-toml"]);
 /** Registered `AgentDefinition → Document` builders, keyed by dialect. */
 export const DIALECT_BUILDERS: Partial<Record<DialectName, DialectBuilder>> = {
   "agentdef-claude-md": buildClaudeDocument,
+  "agentdef-codex-toml": buildCodexDocument,
+  "agentdef-copilot-md": buildCopilotDocument,
   "agentdef-cursor-md": buildCursorDocument,
   "agentdef-gemini-md": buildGeminiDocument,
+  "agentdef-opencode-md": buildOpencodeDocument,
 };
 
 /** Render an agent definition for one dialect: build → emit → wrap. */

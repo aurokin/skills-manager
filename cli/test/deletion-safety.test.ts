@@ -39,7 +39,7 @@ test("apply preserves a real dir that replaced an owned symlink (no --prune)", a
   await runApply(sb.env, opts());
   const claudeTarget = homePath(".claude/skills/foo");
   expect(fs.lstatSync(claudeTarget).isSymbolicLink()).toBe(true);
-  expect(loadState(sb.env).artifacts["foo"]!.placements.find((p) => p.agent === "claude-code")!.kind).toBe("symlink");
+  expect(loadState(sb.env).artifacts["skill:foo"]!.placements.find((p) => p.agent === "claude-code")!.kind).toBe("symlink");
 
   // User detaches: replace the symlink with a real dir holding their own work.
   fs.unlinkSync(claudeTarget);
@@ -80,7 +80,7 @@ test("apply --prune preserves a real dir that replaced an owned symlink", async 
   await runApply(sb.env, opts({ prune: true }));
   expect(fs.existsSync(path.join(claudeTarget, "USER.txt"))).toBe(true);
   // skm forgot the detached placement (no longer manages it).
-  expect(loadState(sb.env).artifacts["foo"]).toBeUndefined();
+  expect(loadState(sb.env).artifacts["skill:foo"]).toBeUndefined();
 });
 
 // Finding 2: ownership of a rendered artifact must cover the WHOLE tree, not just
@@ -95,7 +95,7 @@ test("apply --prune preserves a user file added inside an owned rendered dir", a
   const claudeDir = homePath(".claude/skills/rendered-skill");
   expect(fs.lstatSync(claudeDir).isDirectory()).toBe(true);
   // The full-tree hash is recorded in state (schema v2), enabling the check.
-  const claudePlacement = loadState(sb.env).artifacts["rendered-skill"]!.placements.find(
+  const claudePlacement = loadState(sb.env).artifacts["skill:rendered-skill"]!.placements.find(
     (p) => p.agent === "claude-code",
   );
   expect(typeof claudePlacement?.tree).toBe("string");
@@ -113,7 +113,7 @@ test("apply --prune preserves a user file added inside an owned rendered dir", a
   expect(fs.readFileSync(path.join(claudeDir, "USER_NOTES.txt"), "utf8")).toBe("my private notes\n");
   expect(outcome.exitCode).toBe(2); // foreign refusal → non-convergence
   // skm stopped managing the detached placement.
-  expect(loadState(sb.env).artifacts["rendered-skill"]).toBeUndefined();
+  expect(loadState(sb.env).artifacts["skill:rendered-skill"]).toBeUndefined();
 });
 
 // apply-plan-deletes-foreign: a reviewed `--plan` create replay must not destroy

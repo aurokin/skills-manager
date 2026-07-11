@@ -5,6 +5,12 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import {
+  agentDefFileHash,
+  derivedSkillHash,
+  renderAgentDefFile,
+  renderDerivedSkillMd,
+} from "./agentdef/artifact";
 import { UsageError } from "./errors";
 import { loadContext, registryPath } from "./context";
 import type { SkmEnv } from "./env";
@@ -14,16 +20,23 @@ import { buildPlan, planHashOf } from "./plan";
 import { dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
 import { loadRegistry } from "./registry";
-import { renderSkill, renderedHash, treeHashOf } from "./render";
+import { hashContent, renderSkill, renderedHash, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
 import { scanEntry } from "./scan";
-import { findOwner, loadState, removePlacement, saveState, upsertPlacement } from "./state";
+import {
+  artifactKey,
+  findOwner,
+  loadState,
+  removePlacement,
+  saveState,
+  upsertPlacement,
+} from "./state";
 import type {
   DesiredSkill,
   DriftFinding,
   MachineConfig,
-  Plan,
   PlannedAction,
+  Plan,
   Registry,
   StateFile,
   VerbOptions,
@@ -127,17 +140,23 @@ export function executePlan(
 
 // ── materialization ────────────────────────────────────────────────────────
 
+/** Type-qualified state key for an action's artifact (defaults to the skill namespace). */
+function keyOf(action: PlannedAction): string {
+  return artifactKey(action.placement.artifactType ?? "skill", action.skill);
+}
+
 function recordPlacement(state: StateFile, action: PlannedAction): void {
   const src = action.source;
   if (!src) throw new UsageError(`plan action for '${action.skill}' is missing source`);
   const p = action.placement;
   const abs = path.resolve(p.path);
   // Adopting a pre-existing rendered dir: capture its current full-tree hash as the
-  // owned baseline so later deletion safety covers the whole tree (finding 2).
+  // owned baseline so later deletion safety covers the whole tree (finding 2). A
+  // rendered-file (agent-def) is covered by its content hash, not a tree.
   const tree = p.kind === "rendered" ? treeHashOf(abs) : undefined;
   upsertPlacement(
     state,
-    action.skill,
+    keyOf(action),
     { root: src.root, visibility: src.visibility },
     {
       agent: p.agent,
@@ -182,9 +201,31 @@ function materialize(
     return { drift: "foreign", skill: action.skill, path: abs, detail: removal.detail };
   }
 
-  fs.mkdirSync(path.dirname(abs), { recursive: true }); // create the agent dir per registry
+  fs.mkdirSync(path.dirname(abs), { recursive: true }); // create the agent dir per registry (agentDefDir created on demand)
+  const source = { root: src.root, visibility: src.visibility };
 
-  if (p.kind === "rendered") {
+  if (p.artifactType === "agent-def") {
+    // Single rendered file in a harness's agentDefDir. Re-render from the current
+    // source and refuse if it drifted from the reviewed hash (finding 1).
+    if (p.hash && agentDefFileHash(src.path, p.renderDialect!) !== p.hash) {
+      return { drift: "stale", skill: action.skill, path: abs, detail: "agent-def render changed since plan; re-run plan" };
+    }
+    const text = renderAgentDefFile(src.path, p.renderDialect!);
+    removeExisting(abs);
+    fs.writeFileSync(abs, text);
+    upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered-file", hash: hashContent(text) });
+  } else if (p.derived) {
+    // Derived skill: render-only SKILL.md dir (no source tree to copy).
+    const hermes = p.agent === "hermes";
+    if (p.hash && derivedSkillHash(src.path, hermes) !== p.hash) {
+      return { drift: "stale", skill: action.skill, path: abs, detail: "derived-skill render changed since plan; re-run plan" };
+    }
+    const md = renderDerivedSkillMd(src.path, hermes);
+    removeExisting(abs);
+    fs.mkdirSync(abs, { recursive: true });
+    fs.writeFileSync(path.join(abs, "SKILL.md"), md);
+    upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered", hash: hashContent(md), tree: treeHashOf(abs) });
+  } else if (p.kind === "rendered") {
     const dialect = dialectForDir(p.dir);
     if (!dialect) throw new UsageError(`no rendering dialect for dir '${p.dir}'`);
     const skill: DesiredSkill = {
@@ -213,8 +254,8 @@ function materialize(
     const result = renderSkill(env, skill, dialect, abs);
     upsertPlacement(
       state,
-      action.skill,
-      { root: src.root, visibility: src.visibility },
+      keyOf(action),
+      source,
       {
         agent: p.agent,
         path: abs,
@@ -228,8 +269,8 @@ function materialize(
     fs.symlinkSync(src.path, abs);
     upsertPlacement(
       state,
-      action.skill,
-      { root: src.root, visibility: src.visibility },
+      keyOf(action),
+      source,
       { agent: p.agent, path: abs, kind: "symlink" },
     );
   }
@@ -242,11 +283,11 @@ function prune(env: SkmEnv, action: PlannedAction, state: StateFile): DriftFindi
   if (removal.kind === "foreign") {
     // The user replaced our artifact with their own content. Stop managing it
     // (drop from state) and report it rather than recursive-deleting their work.
-    removePlacement(state, action.skill, abs);
+    removePlacement(state, keyOf(action), abs);
     return { drift: "foreign", skill: action.skill, path: abs, detail: removal.detail };
   }
   removeExisting(abs);
-  removePlacement(state, action.skill, abs);
+  removePlacement(state, keyOf(action), abs);
   return undefined;
 }
 
@@ -297,6 +338,19 @@ function classifyRemoval(env: SkmEnv, abs: string, state: StateFile): Removal {
     return { kind: "foreign", detail: "unmanaged directory at target; not overwritten" };
   }
 
+  if (st.isFile()) {
+    // A single rendered file (agent-def). Safe iff skm owns it AND its bytes still
+    // hash to what state recorded (unmodified) — else the user hand-edited it.
+    const owner = findOwner(state, abs);
+    if (owner && owner.placement.kind === "rendered-file") {
+      const diskHash = hashContent(fs.readFileSync(abs, "utf8"));
+      return diskHash === owner.placement.hash
+        ? { kind: "safe" }
+        : { kind: "foreign", detail: "rendered agent-def file hand-edited on disk; not overwritten" };
+    }
+    return { kind: "foreign", detail: "unmanaged file at target; not overwritten" };
+  }
+
   return { kind: "foreign", detail: "unmanaged file at target; not overwritten" };
 }
 
@@ -324,11 +378,16 @@ function summarize(
   refused: DriftFinding[],
 ): { text: string; json: unknown } {
   const counts: Record<string, number> = {};
+  const byType: Record<string, number> = {};
   for (const a of plan.actions) {
     if (a.type === "prune" && !prune) {
       counts["prune-skipped"] = (counts["prune-skipped"] ?? 0) + 1;
     } else {
       counts[a.type] = (counts[a.type] ?? 0) + 1;
+      if (a.type !== "noop") {
+        const t = a.placement.artifactType ?? "skill";
+        byType[t] = (byType[t] ?? 0) + 1;
+      }
     }
   }
   if (refused.length > 0) counts["refused"] = refused.length;
@@ -339,6 +398,8 @@ function summarize(
     text,
     json: {
       applied: counts,
+      // Artifact-type breakdown of non-noop actions (additive; AUR-616).
+      byArtifactType: byType,
       planHash: plan.planHash,
       requiresPrune: plan.requiresPrune,
       prune,

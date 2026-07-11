@@ -11,11 +11,12 @@ import { loadMachineConfig } from "./machine-config";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
 import { dirPath, loadRegistry, readersOf } from "./registry";
-import { renderSkill } from "./render";
+import { hashContent, renderSkill } from "./render";
 import { resolveDesiredState } from "./resolve";
-import { loadState, saveState, upsertPlacement } from "./state";
+import { artifactKey, loadState, saveState, upsertPlacement } from "./state";
 import { scanEntry, scanRegistryDirs } from "./scan";
 import type {
+  AgentScope,
   DesiredSkill,
   DesiredState,
   ExitCodeValue,
@@ -75,8 +76,17 @@ export function diagnose(
 ): Finding[] {
   const findings: Finding[] = [];
 
-  // 1. Broken owned symlinks + 2. rendered-hash drift.
-  for (const [skill, artifact] of Object.entries(state.artifacts)) {
+  // Derived-skill rendered placements are NOT repairable by --fix: applyFixes
+  // skips them (re-render needs the derived-skill path, not renderSkill), so their
+  // drift must be reported non-fixable — else doctor promises a fix it won't apply.
+  const derivedRenderedPaths = new Set<string>();
+  for (const dp of computeDesiredPlacements(env, config, registry, desired).placements) {
+    if (dp.placement.derived) derivedRenderedPaths.add(path.resolve(dp.placement.path));
+  }
+
+  // 1. Broken owned symlinks + 2. rendered-hash drift (dirs and single files).
+  for (const artifact of Object.values(state.artifacts)) {
+    const skill = artifact.name;
     for (const sp of artifact.placements) {
       const entry = scanEntry(env, expandTilde(env, sp.path));
       if (sp.kind === "symlink") {
@@ -86,7 +96,18 @@ export function diagnose(
           findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: "owned symlink missing", fixable: true });
         }
       } else if (sp.kind === "rendered" && entry.kind === "dir" && entry.sha256OfSkillMd !== sp.hash) {
-        findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "rendered artifact hand-edited (hash mismatch)", fixable: true });
+        const fixable = !derivedRenderedPaths.has(path.resolve(expandTilde(env, sp.path)));
+        findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "rendered artifact hand-edited (hash mismatch)", fixable });
+      } else if (sp.kind === "rendered-file") {
+        if (entry.kind === "absent") {
+          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: "owned agent-def file missing", fixable: false });
+        } else if (entry.kind !== "file") {
+          // A dir or symlink replaced the rendered file → not skm's render, and the
+          // file-hash branch below would silently skip it; flag it like a missing file.
+          findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned agent-def file replaced by ${entry.kind}`, fixable: false });
+        } else if (hashContent(fs.readFileSync(expandTilde(env, sp.path), "utf8")) !== sp.hash) {
+          findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "agent-def file hand-edited (hash mismatch)", fixable: false });
+        }
       }
     }
   }
@@ -95,11 +116,11 @@ export function diagnose(
   findings.push(...verifyDenyGuarantee(env, config, registry, desired, state));
 
   // 4a. Private-content leaks: owned private placements in disallowed worktrees.
-  for (const [skill, artifact] of Object.entries(state.artifacts)) {
+  for (const artifact of Object.values(state.artifacts)) {
     if (artifact.source.visibility !== "private") continue;
     for (const sp of artifact.placements) {
       const reason = privacyViolation(config, expandTilde(env, sp.path));
-      if (reason) findings.push({ category: "private-leak", severity: "error", skill, path: sp.path, message: reason, fixable: false });
+      if (reason) findings.push({ category: "private-leak", severity: "error", skill: artifact.name, path: sp.path, message: reason, fixable: false });
     }
   }
 
@@ -112,6 +133,74 @@ export function diagnose(
   // 5. Kill-switch suggestions for bleed onto agents with a suppression env var.
   findings.push(...killSwitchSuggestions(env, config, registry, desired));
 
+  // 6. Agent-def default-skills cross-reference: a definition naming a default
+  //    skill that is hidden from (or absent for) the harness it is placed on.
+  findings.push(...agentDefSkillReferences(env, config, registry, desired));
+
+  return findings;
+}
+
+/**
+ * Cross-reference each placed agent definition's `defaults.skills` list against the
+ * skills actually visible to the harness the definition lands on. A default-skills
+ * entry that names a skill skm does not manage (absent), or one that is deny-scoped
+ * away from / never placed on that harness (hidden), is a configuration mismatch —
+ * the subagent asks for a skill it will not have. Reported as a warning naming the
+ * agent, skill, and harness. Scoped to `export: agent` placements (rendered-file),
+ * where "the harness the definition is placed on" is well defined per harness.
+ */
+function agentDefSkillReferences(
+  env: SkmEnv,
+  config: MachineConfig,
+  registry: Registry,
+  desired: DesiredState,
+): Finding[] {
+  const solved = computeDesiredPlacements(env, config, registry, desired);
+
+  // Which agents can actually see each skill (its placement dirs' readers, incl.
+  // maybe-reads and shared). Derived skills count too — they share the namespace.
+  const skillReaders = new Map<string, Set<string>>();
+  for (const dp of solved.placements) {
+    if (dp.placement.artifactType === "agent-def") continue;
+    const set = skillReaders.get(dp.skill) ?? new Set<string>();
+    for (const reader of readersOf(registry, dp.placement.dir, { includeMaybe: true })) set.add(reader);
+    skillReaders.set(dp.skill, set);
+  }
+  // Names skm sources at all (a skill with no reachable placement is still "known").
+  const knownSkills = new Set<string>([
+    ...desired.skills.map((s) => s.name),
+    ...desired.agentDefs.filter((d) => d.exportMode === "skill").map((d) => d.derivedSkillName ?? d.name),
+  ]);
+
+  const findings: Finding[] = [];
+  const seen = new Set<string>();
+  for (const dp of solved.placements) {
+    const def = dp.desiredAgentDef;
+    if (dp.placement.artifactType !== "agent-def" || !def) continue;
+    const harness = dp.placement.agent;
+    for (const wanted of def.def.skills) {
+      const key = `${def.name}:${wanted}:${harness}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (!knownSkills.has(wanted)) {
+        findings.push({
+          category: "skill-reference",
+          severity: "warn",
+          skill: def.name,
+          message: `agent definition '${def.name}' names default skill '${wanted}', which skm does not manage; it will be absent for harness '${harness}'`,
+          fixable: false,
+        });
+      } else if (!skillReaders.get(wanted)?.has(harness)) {
+        findings.push({
+          category: "skill-reference",
+          severity: "warn",
+          skill: def.name,
+          message: `agent definition '${def.name}' names default skill '${wanted}', hidden from harness '${harness}' (skill scoping excludes it)`,
+          fixable: false,
+        });
+      }
+    }
+  }
   return findings;
 }
 
@@ -126,7 +215,17 @@ function verifyDenyGuarantee(
   const findings: Finding[] = [];
   const dirByPath = registryDirByPath(env, registry);
 
-  for (const skill of desired.skills) {
+  // Derived skills (export: skill) share the skill namespace and carry their own
+  // deny scoping (from harness.exclude); their owned placements must be swept too,
+  // else a deny guarantee on a derived skill goes unverified.
+  const scoped: { name: string; scoping?: AgentScope }[] = [
+    ...desired.skills.map((s) => ({ name: s.name, scoping: s.scoping })),
+    ...desired.agentDefs
+      .filter((d) => d.exportMode === "skill")
+      .map((d) => ({ name: d.derivedSkillName ?? d.name, scoping: d.scoping })),
+  ];
+
+  for (const skill of scoped) {
     const scope = skill.scoping;
     // Only `deny` is a HARD guarantee (design §5). `allow` is best-effort: the
     // non-allowed agents are soft bleed ("reported, not blocked"), so an
@@ -137,7 +236,7 @@ function verifyDenyGuarantee(
     const deniedSet = new Set(denied);
     if (deniedSet.size === 0) continue;
 
-    const artifact = state.artifacts[skill.name];
+    const artifact = state.artifacts[artifactKey("skill", skill.name)];
     if (!artifact) continue;
     for (const sp of artifact.placements) {
       const parent = path.resolve(path.dirname(expandTilde(env, sp.path)));
@@ -281,7 +380,7 @@ function applyFixes(
   );
 
   let fixed = 0;
-  for (const [skill, artifact] of Object.entries(state.artifacts)) {
+  for (const [key, artifact] of Object.entries(state.artifacts)) {
     for (const sp of artifact.placements) {
       const abs = path.resolve(expandTilde(env, sp.path));
       const dp = byPath.get(abs);
@@ -299,13 +398,27 @@ function applyFixes(
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.symlinkSync(dp.source.path, abs);
         fixed++;
-      } else if (sp.kind === "rendered" && entry.kind === "dir" && entry.sha256OfSkillMd !== sp.hash) {
+      } else if (
+        sp.kind === "rendered" &&
+        !dp.placement.derived && // derived-skill re-render is not a doctor --fix path
+        entry.kind === "dir" &&
+        entry.sha256OfSkillMd !== sp.hash
+      ) {
         const dialect = dialectForDir(dp.placement.dir);
-        if (!dialect) continue;
+        if (!dialect || !dp.desiredSkill) continue;
         removeExisting(abs);
-        const skillDef: DesiredSkill = { name: skill, source: dp.source, overrides: dp.desiredSkill.overrides };
+        const skillDef: DesiredSkill = { name: artifact.name, source: dp.source, overrides: dp.desiredSkill.overrides };
         const res = renderSkill(env, skillDef, dialect, abs);
-        upsertPlacement(state, skill, artifact.source, { agent: sp.agent, path: abs, kind: "rendered", hash: res.hash });
+        // Record the full-tree hash too (as apply does) — dropping it re-opens the
+        // deletion-safety hole where a user file added alongside SKILL.md would be
+        // recursive-deleted because ownership only covered SKILL.md (finding 2).
+        upsertPlacement(state, key, artifact.source, {
+          agent: sp.agent,
+          path: abs,
+          kind: "rendered",
+          hash: res.hash,
+          ...(res.tree ? { tree: res.tree } : {}),
+        });
         fixed++;
       }
     }

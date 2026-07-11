@@ -98,11 +98,11 @@ describe("fresh apply", () => {
 
     const state = loadState(sb.env);
     expect(Object.keys(state.artifacts).sort()).toEqual([
-      "rendered-skill",
-      "scoped-skill",
-      "unscoped-skill",
+      "skill:rendered-skill",
+      "skill:scoped-skill",
+      "skill:unscoped-skill",
     ]);
-    const claudePlacement = state.artifacts["rendered-skill"]!.placements.find((p) => p.agent === "claude-code");
+    const claudePlacement = state.artifacts["skill:rendered-skill"]!.placements.find((p) => p.agent === "claude-code");
     expect(claudePlacement?.kind).toBe("rendered");
     expect(typeof claudePlacement?.hash).toBe("string");
   });
@@ -146,13 +146,13 @@ test("prune is gated by --prune and only removes owned paths", async () => {
   // apply WITHOUT --prune leaves the orphans in place.
   await runApply(sb.env, opts());
   expect(exists(homePath(".claude/skills/drop"))).toBe(true);
-  expect(loadState(sb.env).artifacts["drop"]).toBeDefined();
+  expect(loadState(sb.env).artifacts["skill:drop"]).toBeDefined();
 
   // apply WITH --prune removes them and cleans state.
   await runApply(sb.env, opts({ prune: true }));
   expect(exists(homePath(".claude/skills/drop"))).toBe(false);
   expect(exists(homePath(".agents/skills/drop"))).toBe(false);
-  expect(loadState(sb.env).artifacts["drop"]).toBeUndefined();
+  expect(loadState(sb.env).artifacts["skill:drop"]).toBeUndefined();
   // 'keep' untouched
   expect(exists(homePath(".claude/skills/keep"))).toBe(true);
 });
@@ -179,7 +179,7 @@ test("adopts a pre-existing correct symlink without a filesystem change", async 
   await runApply(sb.env, opts());
   // The symlink is untouched (same inode) but now recorded in state.
   expect(fs.lstatSync(target).ino).toBe(inode);
-  const owned = loadState(sb.env).artifacts["adopt-me"]!.placements.some((p) => p.agent === "shared");
+  const owned = loadState(sb.env).artifacts["skill:adopt-me"]!.placements.some((p) => p.agent === "shared");
   expect(owned).toBe(true);
 });
 
@@ -313,7 +313,7 @@ test("hermes placements are created but never pruned", async () => {
   // hermes symlink survives; the others are gone.
   expect(exists(homePath(".hermes/skills/shared-skill"))).toBe(true);
   expect(exists(homePath(".claude/skills/shared-skill"))).toBe(false);
-  expect(loadState(sb.env).artifacts["shared-skill"]!.placements.map((p) => p.agent)).toEqual(["hermes"]);
+  expect(loadState(sb.env).artifacts["skill:shared-skill"]!.placements.map((p) => p.agent)).toEqual(["hermes"]);
 });
 
 // ── 10. apply --plan with stale-hash refusal ──────────────────────────────────
@@ -412,7 +412,7 @@ test("status flags a symlink→rendered kind transition as drift", async () => {
   const claudeTarget = homePath(".claude/skills/morph");
   expect(fs.lstatSync(claudeTarget).isSymbolicLink()).toBe(true);
   expect(
-    loadState(sb.env).artifacts["morph"]!.placements.find((p) => p.agent === "claude-code")!.kind,
+    loadState(sb.env).artifacts["skill:morph"]!.placements.find((p) => p.agent === "claude-code")!.kind,
   ).toBe("symlink");
 
   // Add a claude override → the skill now DESIRES a rendered dir in claude's dir.

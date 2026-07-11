@@ -23,7 +23,7 @@ function skill(name: string, scoping: DesiredSkill["scoping"]): DesiredSkill {
   };
 }
 function desiredOf(skills: DesiredSkill[]): DesiredState {
-  return { skills, warnings: [], hash: "sha256:test" };
+  return { skills, agentDefs: [], warnings: [], hash: "sha256:test" };
 }
 
 const registry = loadRegistry(realRegistryPath());
@@ -100,10 +100,12 @@ describe("allow is not a hard deny-guarantee", () => {
       const desired = desiredOf([skill("s2", { deny: ["opencode"] })]);
       const claudePath = path.join(sb.home, ".claude", "skills", "s2");
       const state: StateFile = {
-        version: 1,
+        version: 3,
         machine: "sandbox",
         artifacts: {
-          s2: {
+          "skill:s2": {
+            type: "skill",
+            name: "s2",
             source: { root: "public", visibility: "public" },
             placements: [{ agent: "claude-code", path: claudePath, kind: "symlink" }],
           },

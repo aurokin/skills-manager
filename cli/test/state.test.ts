@@ -26,7 +26,7 @@ function placement(agent: string, p: string): StatePlacement {
 describe("emptyState", () => {
   test("has the current state version, the given machine, and no artifacts", () => {
     const s = emptyState("koopa");
-    expect(s).toEqual({ version: 2, machine: "koopa", artifacts: {} });
+    expect(s).toEqual({ version: 3, machine: "koopa", artifacts: {} });
   });
 });
 
@@ -39,11 +39,44 @@ describe("loadState", () => {
   test("round-trips through saveState", () => {
     sandbox = makeSandbox();
     const s = emptyState("m1");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("claude-code", "/abs/.claude/skills/alpha"),
     ]);
     saveState(sandbox.env, s);
     expect(loadState(sandbox.env)).toEqual(s);
+  });
+
+  test("forward-migrates a v2 (bare-key) state file to v3 type-qualified keys", () => {
+    sandbox = makeSandbox();
+    const file = statePath(sandbox.env);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify({
+        version: 2,
+        machine: "m",
+        artifacts: {
+          alpha: { source: { root: "public", visibility: "public" }, placements: [placement("shared", "/a/.agents/skills/alpha")] },
+        },
+      }),
+    );
+    const loaded = loadState(sandbox.env);
+    expect(loaded.version).toBe(3);
+    expect(loaded.artifacts["skill:alpha"]).toEqual({
+      type: "skill",
+      name: "alpha",
+      source: { root: "public", visibility: "public" },
+      placements: [placement("shared", "/a/.agents/skills/alpha")],
+    });
+    expect(loaded.artifacts.alpha).toBeUndefined();
+  });
+
+  test("hard-fails on a newer-than-supported state version", () => {
+    sandbox = makeSandbox();
+    const file = statePath(sandbox.env);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ version: 4, machine: "m", artifacts: {} }));
+    expect(() => loadState(sandbox!.env)).toThrow(/newer than this skm supports/);
   });
 
   test("throws a clear error on invalid JSON", () => {
@@ -91,66 +124,75 @@ describe("saveState (atomic)", () => {
 });
 
 describe("recordArtifact", () => {
-  test("upserts a skill's source and full placement set", () => {
+  test("upserts a skill's source and full placement set with type + name", () => {
     const s = emptyState("m");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("shared", "/a/.agents/skills/alpha"),
     ]);
-    expect(s.artifacts.alpha).toEqual({
+    expect(s.artifacts["skill:alpha"]).toEqual({
+      type: "skill",
+      name: "alpha",
       source: { root: "public", visibility: "public" },
       placements: [placement("shared", "/a/.agents/skills/alpha")],
     });
     // second call replaces placements wholesale
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, []);
-    expect(s.artifacts.alpha!.placements).toEqual([]);
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, []);
+    expect(s.artifacts["skill:alpha"]!.placements).toEqual([]);
+  });
+
+  test("records an agent-def artifact under the agent-def namespace", () => {
+    const s = emptyState("m");
+    recordArtifact(s, "agent-def:review", { root: "public", visibility: "public" }, []);
+    expect(s.artifacts["agent-def:review"]!.type).toBe("agent-def");
+    expect(s.artifacts["agent-def:review"]!.name).toBe("review");
   });
 });
 
 describe("removePlacement", () => {
   test("drops one placement by path and keeps the rest", () => {
     const s = emptyState("m");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("shared", "/a/.agents/skills/alpha"),
       placement("claude-code", "/a/.claude/skills/alpha"),
     ]);
-    removePlacement(s, "alpha", "/a/.agents/skills/alpha");
-    expect(s.artifacts.alpha!.placements).toEqual([
+    removePlacement(s, "skill:alpha", "/a/.agents/skills/alpha");
+    expect(s.artifacts["skill:alpha"]!.placements).toEqual([
       placement("claude-code", "/a/.claude/skills/alpha"),
     ]);
   });
 
   test("deletes the artifact when its last placement is removed", () => {
     const s = emptyState("m");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("shared", "/a/.agents/skills/alpha"),
     ]);
-    removePlacement(s, "alpha", "/a/.agents/skills/alpha");
-    expect(s.artifacts.alpha).toBeUndefined();
+    removePlacement(s, "skill:alpha", "/a/.agents/skills/alpha");
+    expect(s.artifacts["skill:alpha"]).toBeUndefined();
   });
 
   test("matches paths regardless of non-canonical form", () => {
     const s = emptyState("m");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("shared", "/a/.agents/skills/alpha"),
     ]);
-    removePlacement(s, "alpha", "/a/./.agents/skills/../skills/alpha");
-    expect(s.artifacts.alpha).toBeUndefined();
+    removePlacement(s, "skill:alpha", "/a/./.agents/skills/../skills/alpha");
+    expect(s.artifacts["skill:alpha"]).toBeUndefined();
   });
 
   test("is a no-op for an unknown skill", () => {
     const s = emptyState("m");
-    expect(() => removePlacement(s, "ghost", "/x")).not.toThrow();
+    expect(() => removePlacement(s, "skill:ghost", "/x")).not.toThrow();
   });
 });
 
 describe("findOwner", () => {
-  test("returns the owning skill and placement for a recorded path", () => {
+  test("returns the owning key and placement for a recorded path", () => {
     const s = emptyState("m");
-    recordArtifact(s, "alpha", { root: "public", visibility: "public" }, [
+    recordArtifact(s, "skill:alpha", { root: "public", visibility: "public" }, [
       placement("claude-code", "/a/.claude/skills/alpha"),
     ]);
     expect(findOwner(s, "/a/.claude/skills/alpha")).toEqual({
-      skill: "alpha",
+      skill: "skill:alpha",
       placement: placement("claude-code", "/a/.claude/skills/alpha"),
     });
   });

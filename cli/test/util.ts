@@ -121,6 +121,30 @@ export function makeSkill(
   return dir;
 }
 
+/**
+ * Create agents/<name>/{agent.yaml, instructions.md} under a root path (AUR-616).
+ * `agentYaml` is stringified as YAML; `rawAgentYaml` writes verbatim text (used to
+ * exercise YAML 1.1 boolean/float parsing). Returns the agent-def source dir.
+ */
+export function makeAgentDef(
+  rootPath: string,
+  name: string,
+  opts: {
+    agentYaml?: Record<string, unknown>;
+    rawAgentYaml?: string;
+    instructions?: string;
+  },
+): string {
+  const dir = path.join(rootPath, "agents", name);
+  fs.mkdirSync(dir, { recursive: true });
+  const yamlText =
+    opts.rawAgentYaml ??
+    stringify({ name, description: `${name} agent`, ...(opts.agentYaml ?? {}) });
+  fs.writeFileSync(path.join(dir, "agent.yaml"), yamlText);
+  fs.writeFileSync(path.join(dir, "instructions.md"), opts.instructions ?? `Do ${name}.\n`);
+  return dir;
+}
+
 /** Write an overlay.json at a root path. */
 export function makeOverlay(
   rootPath: string,

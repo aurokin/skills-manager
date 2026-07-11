@@ -12,6 +12,7 @@ import { buildPlan } from "../src/plan";
 import { loadRegistry } from "../src/registry";
 import { resolveDesiredState } from "../src/resolve";
 import { loadState } from "../src/state";
+import { computeDrift } from "../src/status";
 import type { MachineConfig, VerbOptions } from "../src/types";
 import { type Sandbox, makeRoot, makeSandbox, makeSkill, realRegistryPath, writeMachineConfig } from "./util";
 
@@ -76,9 +77,37 @@ test("apply --plan re-runs the privacy guard when the allowlist changes after pl
   const outcome = await runApply(sb.env, opts({ planFile }));
   const claudeDir = path.join(sb.home, ".claude", "skills", "fleet-secret");
   expect(fs.existsSync(path.join(claudeDir, "SKILL.md"))).toBe(false); // nothing leaked
-  expect(loadState(sb.env).artifacts["fleet-secret"]).toBeUndefined(); // nothing recorded
+  expect(loadState(sb.env).artifacts["skill:fleet-secret"]).toBeUndefined(); // nothing recorded
 
   const summary = outcome.json as { refused: { drift: string; skill?: string }[] };
   expect(summary.refused.some((r) => r.drift === "unsafe" && r.skill === "fleet-secret")).toBe(true);
   expect(outcome.exitCode).toBe(2); // refusal → non-convergence
+});
+
+test("status's unsafe-private finding uses the bare artifact name and stamps artifactType", async () => {
+  const registry = loadRegistry(realRegistryPath());
+  const ORIGIN = "https://example.com/dotfiles.git";
+  git(sb.home, ["init", "-q"]);
+  git(sb.home, ["remote", "add", "origin", ORIGIN]);
+
+  const priv = makeRoot(sb, "private", "private");
+  makeSkill(priv.path, "fleet-secret", { body: "TOP SECRET" });
+  const config: MachineConfig = {
+    version: 1,
+    roots: [priv],
+    agents: ["claude-code"],
+    privateOriginAllowlist: [ORIGIN], // allowlisted at placement time
+  };
+  writeMachineConfig(sb, config);
+  await runApply(sb.env, opts());
+
+  // Origin becomes non-allowlisted → the owned private placement is now unsafe.
+  const disallowed: MachineConfig = { ...config, privateOriginAllowlist: [] };
+  const desired = resolveDesiredState(sb.env, disallowed, registry);
+  const drift = computeDrift(sb.env, disallowed, registry, desired, loadState(sb.env));
+  const unsafe = drift.find((d) => d.drift === "unsafe");
+  expect(unsafe).toBeDefined();
+  // Bare name (not the type-qualified state key `skill:fleet-secret`), typed.
+  expect(unsafe!.skill).toBe("fleet-secret");
+  expect(unsafe!.artifactType).toBe("skill");
 });

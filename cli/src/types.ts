@@ -3,6 +3,15 @@
 // scoping (allow/deny), drift class, first-party rendering.
 
 import type { SkmEnv } from "./env";
+import type { AgentDefinition } from "./agentdef/schema";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Artifact type (AUR-616). skm manages two artifact types now: skills and agent
+// definitions. State keys are type-qualified (`skill:<name>` / `agent-def:<name>`)
+// so a derived skill can never silently collide with a native skill.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ArtifactType = "skill" | "agent-def";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent capability registry (registry/agents.json). The record KEY is the id;
@@ -143,8 +152,29 @@ export interface DesiredSkill {
   overrides: AgentOverrides;
 }
 
+/**
+ * A resolved agent definition (AUR-616). Sourced from `<root>/agents/<name>/`
+ * (agent.yaml + instructions.md), parsed via loadAgentDefinition. The parsed
+ * `def` is carried in memory only (never serialized); apply --plan reloads it
+ * from `source.path`, matching how skills re-read SKILL.md.
+ */
+export interface DesiredAgentDef {
+  name: string;
+  source: SkillSource;
+  /** export mode: "agent" | "skill" | "none". */
+  exportMode: string;
+  /** Normalized derived-skill name (export mode "skill" only). */
+  derivedSkillName?: string;
+  /** Scoping derived from `harness.include`/`exclude` (allow ∩ enabled, deny raw). */
+  scoping?: AgentScope;
+  /** Parsed definition (in-memory only; not part of the desired-state hash payload). */
+  def: AgentDefinition;
+}
+
 export interface DesiredState {
   skills: DesiredSkill[];
+  /** Resolved agent definitions (AUR-616). */
+  agentDefs: DesiredAgentDef[];
   /** Collision / deprecation / bleed notices surfaced in plan/status. */
   warnings: Warning[];
   /** Stable hash of the desired set; apply --plan refuses if it changed. */
@@ -155,7 +185,10 @@ export interface DesiredState {
 // Placement
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type PlacementKind = "symlink" | "rendered";
+// "rendered-file" (AUR-616) is a single rendered file (an agent-definition
+// placement like ~/.claude/agents/<name>.md), hashed by file content — as opposed
+// to "rendered" which is a whole directory tree containing a SKILL.md.
+export type PlacementKind = "symlink" | "rendered" | "rendered-file";
 /** An agent id, or the "shared" sentinel for ~/.agents/skills. */
 export type PlacementTarget = string;
 
@@ -166,8 +199,14 @@ export interface Placement {
   /** Absolute target path. */
   path: string;
   kind: PlacementKind;
-  /** sha256 of rendered SKILL.md (rendered placements only). */
+  /** sha256 of the rendered content (rendered SKILL.md, or a rendered-file's bytes). */
   hash?: string;
+  /** Artifact type this placement belongs to (defaults to "skill" when absent). */
+  artifactType?: ArtifactType;
+  /** True for a derived-skill render (SKILL.md rendered from an agent definition). */
+  derived?: boolean;
+  /** agent-definition render dialect (rendered-file placements only). */
+  renderDialect?: AgentDefDialect;
   /** Incidental readers of this dir beyond the intended agent(s). */
   bleed?: string[];
   /** Chosen dir is registry-flagged deprecated (e.g. codex dir); plan warns. */
@@ -279,6 +318,10 @@ export interface StatePlacement {
 }
 
 export interface Artifact {
+  /** Artifact type (state schema v3+). Absent entries predate the type qualifier. */
+  type: ArtifactType;
+  /** Bare artifact name (the state key is `${type}:${name}`). */
+  name: string;
   source: { root: string; visibility: Visibility };
   placements: StatePlacement[];
 }
@@ -298,6 +341,8 @@ export type DriftClass = "missing" | "stale" | "modified" | "foreign" | "unsafe"
 export interface DriftFinding {
   drift: DriftClass;
   skill?: string;
+  /** Artifact type of the drifting placement (additive; absent on foreign/unsafe scans). */
+  artifactType?: ArtifactType;
   path: string;
   detail: string;
 }
@@ -313,7 +358,10 @@ export type FindingCategory =
   | "private-leak"
   | "foreign"
   | "env-suggestion"
-  | "reconcile";
+  | "reconcile"
+  // An agent definition's default-skills entry names a skill hidden from (or
+  // absent for) the harness the definition is placed on (AUR-616).
+  | "skill-reference";
 
 export interface Finding {
   category: FindingCategory;
@@ -330,6 +378,8 @@ export interface Finding {
 
 export interface SkillExplanation {
   name: string;
+  /** Which artifact type this is ("skill" or "agent-def"). */
+  artifactType: ArtifactType;
   source: SkillSource;
   scoping?: AgentScope;
   placements: Placement[];
@@ -377,6 +427,8 @@ export interface VerbOptions {
   yes: boolean;
   planFile?: string;
   fix: boolean;
+  /** Legacy in-repo agents_home for `adopt custom-agents` (--agents-home). */
+  agentsHome?: string;
   /** Positional args (e.g. `explain <skill>`, `root add <path>`). */
   args: string[];
 }

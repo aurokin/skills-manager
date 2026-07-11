@@ -4,12 +4,14 @@
 // reported alongside the actions. Owned by the plan/resolve team.
 
 import * as crypto from "node:crypto";
+import * as fs from "node:fs";
 import * as path from "node:path";
+import { agentDefFileHash, derivedSkillHash } from "./agentdef/artifact";
 import { loadContext } from "./context";
 import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
-import { renderedHash } from "./render";
+import { hashContent, renderedHash } from "./render";
 import { classifyTarget, scanEntry } from "./scan";
 import { findOwner } from "./state";
 import type {
@@ -92,7 +94,9 @@ export function buildPlan(
       });
     }
 
-    if (p.kind === "rendered") {
+    if (p.artifactType === "agent-def") {
+      diffAgentDefFile(env, dp, state, actions, warnings, foreign);
+    } else if (p.kind === "rendered") {
       diffRendered(env, dp, state, actions, warnings, foreign);
     } else {
       diffSymlink(env, dp, state, actions, foreign);
@@ -147,6 +151,12 @@ export function planHashOf(
           deprecated: a.placement.deprecated ?? null,
           addOnly: a.placement.addOnly ?? null,
           bleed: a.placement.bleed ?? null,
+          // Artifact type + render descriptor: omitting these would let a reviewed
+          // --plan flip a skill placement to an agent-def render (or a native render
+          // to a derived one) at a different target/dialect while passing integrity.
+          artifactType: a.placement.artifactType ?? "skill",
+          derived: a.placement.derived ?? null,
+          renderDialect: a.placement.renderDialect ?? null,
         },
         // Prune actions carry an empty source path → normalize to null.
         source: a.source
@@ -201,7 +211,9 @@ function baseAction(dp: DesiredPlacement, type: PlannedAction["type"], placement
     placement,
     source: dp.source,
   };
-  if (Object.keys(dp.desiredSkill.overrides).length > 0) {
+  // Overrides apply to native skill renders only; derived skills and agent-def
+  // files carry no agents/*.yaml override map.
+  if (dp.desiredSkill && Object.keys(dp.desiredSkill.overrides).length > 0) {
     action.overrides = dp.desiredSkill.overrides;
   }
   return action;
@@ -253,13 +265,19 @@ function diffRendered(
   foreign: DriftFinding[],
 ): void {
   const p = dp.placement;
-  const dialect = dialectForDir(p.dir);
-  if (!dialect) {
-    // Should not happen (only first-party dirs render); fall back to symlink diff.
-    diffSymlink(env, dp, state, actions, foreign);
-    return;
+  let expectedHash: string;
+  if (p.derived) {
+    // Derived skill: render-only SKILL.md from the agent definition (no override dialect).
+    expectedHash = derivedSkillHash(dp.source.path, p.agent === "hermes");
+  } else {
+    const dialect = dialectForDir(p.dir);
+    if (!dialect) {
+      // Should not happen (only first-party dirs render); fall back to symlink diff.
+      diffSymlink(env, dp, state, actions, foreign);
+      return;
+    }
+    expectedHash = renderedHash(dp.desiredSkill!, dialect);
   }
-  const expectedHash = renderedHash(dp.desiredSkill, dialect);
   const rendered: Placement = { ...p, hash: expectedHash };
   const owner = findOwner(state, p.path);
   const entry = scanEntry(env, p.path);
@@ -274,10 +292,16 @@ function diffRendered(
       if (diskHash === owner.placement.hash) {
         actions.push(baseAction(dp, owner.placement.hash === expectedHash ? "noop" : "update", rendered));
       } else {
+        // Native rendered skills are repaired by `doctor --fix`; a derived skill is
+        // not (applyFixes skips it), so its true remedy is to remove the file and
+        // re-apply — say so rather than promise a fix doctor won't perform.
+        const remedy = p.derived
+          ? "remove it and re-apply to restore skm's render"
+          : "doctor --fix re-renders";
         warnings.push({
           kind: "modified",
           skill: dp.skill,
-          message: `rendered artifact '${dp.skill}' at ${p.path} was hand-edited; not overwritten (doctor --fix re-renders)`,
+          message: `rendered artifact '${dp.skill}' at ${p.path} was hand-edited; not overwritten (${remedy})`,
         });
       }
     } else if (diskHash === expectedHash) {
@@ -296,6 +320,60 @@ function diffRendered(
   }
 }
 
+/**
+ * Diff a single rendered-file agent-definition placement (one file in a harness's
+ * agentDefDir). Mirrors diffRendered but for a file: an absent path → create; an
+ * owned file whose content hash matches state → noop/update; a hand-edited owned
+ * file → warned (not overwritten); an unowned matching file → adopt; anything else
+ * → foreign. Rendering the whole agentDefDir on demand is left to apply/materialize.
+ */
+function diffAgentDefFile(
+  env: SkmEnv,
+  dp: DesiredPlacement,
+  state: StateFile,
+  actions: PlannedAction[],
+  warnings: Warning[],
+  foreign: DriftFinding[],
+): void {
+  const p = dp.placement;
+  const expectedHash = agentDefFileHash(dp.source.path, p.renderDialect!);
+  const rendered: Placement = { ...p, hash: expectedHash };
+  const owner = findOwner(state, p.path);
+  const entry = scanEntry(env, p.path);
+
+  if (entry.kind === "absent") {
+    actions.push(baseAction(dp, "create", rendered));
+    return;
+  }
+  if (entry.kind === "file") {
+    const diskHash = hashContent(fs.readFileSync(p.path, "utf8"));
+    if (owner) {
+      if (diskHash === owner.placement.hash) {
+        actions.push(baseAction(dp, owner.placement.hash === expectedHash ? "noop" : "update", rendered));
+      } else {
+        warnings.push({
+          // Agent-def files are marked non-fixable by doctor and skipped by applyFixes,
+          // so the accurate remedy is to remove the file and re-apply (not doctor --fix).
+          kind: "modified",
+          skill: dp.skill,
+          message: `agent definition '${dp.skill}' at ${p.path} was hand-edited; not overwritten (remove it and re-apply to restore skm's render)`,
+        });
+      }
+    } else if (diskHash === expectedHash) {
+      actions.push(baseAction(dp, "adopt", rendered));
+    } else {
+      foreign.push({ drift: "foreign", skill: dp.skill, path: p.path, detail: "unmanaged file at agent-def target" });
+    }
+    return;
+  }
+  // A symlink/dir sits where a rendered file belongs.
+  if (owner && entry.kind === "symlink") {
+    actions.push(baseAction(dp, "create", rendered)); // unlinking a link loses nothing → re-render
+  } else {
+    foreign.push({ drift: "foreign", skill: dp.skill, path: p.path, detail: describeForeign(env, p.path) });
+  }
+}
+
 /** State-owned placements no longer desired become prune actions (hermes exempt). */
 function collectPrunes(
   env: SkmEnv,
@@ -304,7 +382,7 @@ function collectPrunes(
   actions: PlannedAction[],
 ): boolean {
   let requiresPrune = false;
-  for (const [skill, artifact] of Object.entries(state.artifacts)) {
+  for (const artifact of Object.values(state.artifacts)) {
     for (const sp of artifact.placements) {
       const abs = path.resolve(expandTilde(env, sp.path));
       if (desiredPaths.has(abs)) continue;
@@ -315,8 +393,9 @@ function collectPrunes(
         path: expandTilde(env, sp.path),
         kind: sp.kind,
         hash: sp.hash,
+        artifactType: artifact.type,
       };
-      actions.push({ type: "prune", skill, placement, source: { root: artifact.source.root, visibility: artifact.source.visibility, path: "" } });
+      actions.push({ type: "prune", skill: artifact.name, placement, source: { root: artifact.source.root, visibility: artifact.source.visibility, path: "" } });
       requiresPrune = true;
     }
   }
@@ -344,7 +423,8 @@ function renderPlanHuman(plan: Plan): string {
     lines.push(`Plan: ${changes.length} action(s)`);
     for (const a of changes) {
       const verb = a.type === "create" ? `create ${a.placement.kind}` : a.type;
-      lines.push(`  ${verb.padEnd(16)} ${a.skill}  →  ${a.placement.path}`);
+      const type = a.placement.artifactType ?? "skill";
+      lines.push(`  ${verb.padEnd(20)} ${type.padEnd(9)} ${a.skill}  →  ${a.placement.path}`);
     }
   }
   for (const w of plan.warnings) lines.push(`  ! ${w.kind}: ${w.message}`);

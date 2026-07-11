@@ -21,6 +21,8 @@ export interface SkmEnv {
   xdgConfigHome?: string;
   /** XDG_STATE_HOME override; falls back to <home>/.local/state. */
   xdgStateHome?: string;
+  /** $COPILOT_HOME override for Copilot's home dir; falls back to <home>/.copilot. */
+  copilotHome?: string;
   /** Machine name recorded in state/audit (injected, never os.hostname() inline). */
   machineName: string;
   /** Injected clock. */
@@ -33,6 +35,7 @@ export function realEnv(): SkmEnv {
     home: os.homedir(),
     xdgConfigHome: process.env.XDG_CONFIG_HOME || undefined,
     xdgStateHome: process.env.XDG_STATE_HOME || undefined,
+    copilotHome: process.env.COPILOT_HOME || undefined,
     machineName: os.hostname(),
     clock: { now: () => new Date().toISOString() },
   };
@@ -66,6 +69,11 @@ export function auditPath(env: SkmEnv): string {
 /** Manager-owned vendoring cache for scoped-upstream skills (phase 7; path only). */
 export function storeDir(env: SkmEnv): string {
   return path.join(stateHome(env), "skills-manager", "store");
+}
+
+/** $COPILOT_HOME (expanded) or <home>/.copilot — mirrors the oracle's _resolve_copilot_home. */
+export function resolveCopilotHome(env: SkmEnv): string {
+  return env.copilotHome ? expandTilde(env, env.copilotHome) : path.join(env.home, ".copilot");
 }
 
 /** Expand a leading `~`/`~/` against the injected home. Non-tilde paths pass through. */

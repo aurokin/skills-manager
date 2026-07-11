@@ -24,3 +24,15 @@ export class ConfigError extends Error {
     this.name = "ConfigError";
   }
 }
+
+/**
+ * An authoring error where two artifacts want the same placement (AUR-616): a
+ * derived skill whose normalized name collides with a native skill (or another
+ * derived skill). Hard-fails the plan deterministically before any mutation.
+ */
+export class CollisionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CollisionError";
+  }
+}

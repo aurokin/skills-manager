@@ -6,12 +6,18 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { deriveSkillName } from "./agentdef/dialects/derived-skill";
+import { scopingForAgentDef } from "./agentdef/scoping";
+import { isAgentDefDir, loadAgentDefinitionFromDir } from "./agentdef/source";
 import { loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
+import { CollisionError } from "./errors";
 import type { SkmEnv } from "./env";
 import { loadOverlay } from "./overlay";
+import { enabledAgents } from "./registry";
 import type {
   AgentOverrides,
   AgentScope,
+  DesiredAgentDef,
   DesiredSkill,
   DesiredState,
   MachineConfig,
@@ -45,54 +51,121 @@ export function resolveDesiredState(
   const warnings: Warning[] = [];
   const byName = new Map<string, DesiredSkill>();
   const ownerRoot = new Map<string, string>();
+  const defByName = new Map<string, DesiredAgentDef>();
+  const defOwnerRoot = new Map<string, string>();
+  const enabled = enabledAgents(config, registry);
 
   for (const root of config.roots) {
     if (!fs.existsSync(root.path)) throw new RootMissingError(root);
     const scoping = scopingForRoot(root, registry);
 
     const skillsDir = path.join(root.path, "skills");
-    if (!fs.existsSync(skillsDir)) continue;
+    if (fs.existsSync(skillsDir)) {
+      const names = fs
+        .readdirSync(skillsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
 
-    const names = fs
-      .readdirSync(skillsDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-      .sort();
+      for (const name of names) {
+        const skillDir = path.join(skillsDir, name);
+        const skillMd = path.join(skillDir, "SKILL.md");
+        if (!fs.existsSync(skillMd)) continue; // a dir without SKILL.md is not a skill
 
-    for (const name of names) {
-      const skillDir = path.join(skillsDir, name);
-      const skillMd = path.join(skillDir, "SKILL.md");
-      if (!fs.existsSync(skillMd)) continue; // a dir without SKILL.md is not a skill
+        checkFrontmatter(skillMd, name, warnings);
 
-      checkFrontmatter(skillMd, name, warnings);
+        const desired: DesiredSkill = {
+          name,
+          source: { root: root.name, visibility: root.visibility, path: skillDir },
+          overrides: detectOverrides(skillDir),
+        };
+        const scope = scopingForSkill(scoping, name);
+        if (scope) desired.scoping = scope;
 
-      const desired: DesiredSkill = {
-        name,
-        source: { root: root.name, visibility: root.visibility, path: skillDir },
-        overrides: detectOverrides(skillDir),
-      };
-      const scope = scopingForSkill(scoping, name);
-      if (scope) desired.scoping = scope;
-
-      if (byName.has(name)) {
-        warnings.push({
-          kind: "collision",
-          skill: name,
-          message: `skill '${name}' defined in roots '${ownerRoot.get(name)}' and '${root.name}'; '${root.name}' wins`,
-        });
+        if (byName.has(name)) {
+          warnings.push({
+            kind: "collision",
+            skill: name,
+            message: `skill '${name}' defined in roots '${ownerRoot.get(name)}' and '${root.name}'; '${root.name}' wins`,
+          });
+        }
+        byName.set(name, desired);
+        ownerRoot.set(name, root.name);
       }
-      byName.set(name, desired);
-      ownerRoot.set(name, root.name);
+    }
+
+    // Agent definitions: <root>/agents/<name>/{agent.yaml, instructions.md},
+    // parallel to skills/. Later root wins on a name collision, like skills.
+    const agentsDir = path.join(root.path, "agents");
+    if (fs.existsSync(agentsDir)) {
+      const names = fs
+        .readdirSync(agentsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort();
+
+      for (const name of names) {
+        const defDir = path.join(agentsDir, name);
+        if (!isAgentDefDir(defDir)) continue; // a dir without agent.yaml is not a def
+
+        const def = loadAgentDefinitionFromDir(defDir);
+        const desired: DesiredAgentDef = {
+          name,
+          source: { root: root.name, visibility: root.visibility, path: defDir },
+          exportMode: def.export,
+          scoping: scopingForAgentDef(def, enabled),
+          def,
+        };
+        if (def.export === "skill") desired.derivedSkillName = deriveSkillName(def);
+
+        if (defByName.has(name)) {
+          warnings.push({
+            kind: "collision",
+            skill: name,
+            message: `agent definition '${name}' defined in roots '${defOwnerRoot.get(name)}' and '${root.name}'; '${root.name}' wins`,
+          });
+        }
+        defByName.set(name, desired);
+        defOwnerRoot.set(name, root.name);
+      }
     }
   }
 
   const skills = [...byName.values()].sort(byNameAsc);
-  return { skills, warnings, hash: hashDesiredState(skills) };
+  const agentDefs = [...defByName.values()].sort(byNameAsc);
+  assertNoDerivedSkillCollisions(skills, agentDefs);
+  return { skills, agentDefs, warnings, hash: hashDesiredState(skills, agentDefs) };
 }
 
-/** Stable content hash of the desired skill set (apply --plan precondition). */
-export function hashDesiredState(skills: DesiredSkill[]): string {
-  const canonical = [...skills].sort(byNameAsc).map((s) => ({
+/**
+ * A derived skill (export "skill") shares the skill namespace and placement paths
+ * with native skills, so a normalized-name clash is an authoring error that must
+ * hard-fail deterministically before any mutation (naming both artifacts).
+ */
+function assertNoDerivedSkillCollisions(skills: DesiredSkill[], agentDefs: DesiredAgentDef[]): void {
+  const nativeNames = new Set(skills.map((s) => s.name));
+  const derivedOwner = new Map<string, string>();
+  for (const def of agentDefs) {
+    if (def.exportMode !== "skill" || !def.derivedSkillName) continue;
+    const derived = def.derivedSkillName;
+    if (nativeNames.has(derived)) {
+      throw new CollisionError(
+        `derived skill '${derived}' from agent definition '${def.name}' collides with native skill '${derived}'`,
+      );
+    }
+    const prior = derivedOwner.get(derived);
+    if (prior !== undefined) {
+      throw new CollisionError(
+        `derived skill '${derived}' is produced by both agent definitions '${prior}' and '${def.name}'`,
+      );
+    }
+    derivedOwner.set(derived, def.name);
+  }
+}
+
+/** Stable content hash of the desired skill + agent-def set (apply --plan precondition). */
+export function hashDesiredState(skills: DesiredSkill[], agentDefs: DesiredAgentDef[] = []): string {
+  const canonicalSkills = [...skills].sort(byNameAsc).map((s) => ({
     name: s.name,
     root: s.source.root,
     visibility: s.source.visibility,
@@ -100,7 +173,21 @@ export function hashDesiredState(skills: DesiredSkill[]): string {
     scoping: normalizeScopeForHash(s.scoping),
     overrides: Object.keys(s.overrides).sort(),
   }));
-  return `sha256:${crypto.createHash("sha256").update(JSON.stringify(canonical)).digest("hex")}`;
+  // Agent-def source-content edits are caught by the apply-time render-hash
+  // re-check (like skills); the desired-state hash tracks only the stable
+  // selection fields (name/root/path/export/scoping) so a plan is refused when
+  // WHICH definitions exist or where they land changes.
+  const canonicalDefs = [...agentDefs].sort(byNameAsc).map((d) => ({
+    name: d.name,
+    root: d.source.root,
+    visibility: d.source.visibility,
+    path: d.source.path,
+    export: d.exportMode,
+    derived: d.derivedSkillName ?? null,
+    scoping: normalizeScopeForHash(d.scoping),
+  }));
+  const payload = JSON.stringify({ skills: canonicalSkills, agentDefs: canonicalDefs });
+  return `sha256:${crypto.createHash("sha256").update(payload).digest("hex")}`;
 }
 
 // ── internals ────────────────────────────────────────────────────────────────

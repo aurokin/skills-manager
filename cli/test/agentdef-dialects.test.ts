@@ -176,8 +176,10 @@ describe("renderAgentDef", () => {
 
   test("throws for a dialect with no registered builder", () => {
     const def = loadFixture("plan-reviewer");
-    expect(() => renderAgentDef(def, "agentdef-copilot-md")).toThrow(
-      "No dialect builder registered for agentdef-copilot-md",
+    // All six agent-def dialects are registered (AUR-616); a non-agent-def dialect
+    // (e.g. the tprompt prompt surface) has no AgentDefinition→Document builder.
+    expect(() => renderAgentDef(def, "prompt-tprompt")).toThrow(
+      "No dialect builder registered for prompt-tprompt",
     );
   });
 });

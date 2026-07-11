@@ -6,12 +6,27 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { type SkmEnv, statePath } from "./env";
-import type { Artifact, StateFile, StatePlacement } from "./types";
+import type { Artifact, ArtifactType, StateFile, StatePlacement } from "./types";
 
 // v2 added `tree` (full-artifact hash) to rendered placements for deletion safety
-// (finding 2). v1 files load fine — their rendered placements lack `tree` and use
-// classifyRemoval's documented legacy fallback until the next apply upgrades them.
-const STATE_VERSION = 2;
+// (finding 2). v3 (AUR-616) type-qualifies artifact keys (`skill:<name>` /
+// `agent-def:<name>`) and adds `type`/`name` to each Artifact so a derived skill
+// can never silently collide with a native skill. Older versions load fine and are
+// migrated forward in memory (see migrateState); only a NEWER-than-supported
+// version hard-fails, preserving the existing state.ts semantics.
+const STATE_VERSION = 3;
+
+/** Type-qualified state key for an artifact. */
+export function artifactKey(type: ArtifactType, name: string): string {
+  return `${type}:${name}`;
+}
+
+/** Split a state key back into its type + bare name (defensive on unqualified keys). */
+export function parseArtifactKey(key: string): { type: ArtifactType; name: string } {
+  const i = key.indexOf(":");
+  if (i < 0) return { type: "skill", name: key };
+  return { type: key.slice(0, i) as ArtifactType, name: key.slice(i + 1) };
+}
 
 /** A fresh, empty state for a machine (first run). */
 export function emptyState(machine: string): StateFile {
@@ -62,7 +77,25 @@ function parseState(raw: string, file: string): StateFile {
   if (typeof obj.artifacts !== "object" || obj.artifacts === null || Array.isArray(obj.artifacts)) {
     throw new Error(`corrupt state file at ${file}: 'artifacts' must be an object`);
   }
-  return parsed as StateFile;
+  return migrateState(parsed as StateFile);
+}
+
+/**
+ * Forward-migrate an older supported state file in memory (never on disk until the
+ * next save). v1/v2 keyed artifacts by bare skill name and carried no type/name; v3
+ * type-qualifies keys and stamps `type`/`name`. Every pre-v3 entry is a skill, so it
+ * gets the `skill:` prefix and `type: "skill"`. Newer-than-supported was already
+ * rejected above, so this only ever upgrades.
+ */
+function migrateState(state: StateFile): StateFile {
+  if (state.version >= STATE_VERSION) return state;
+  const artifacts: Record<string, Artifact> = {};
+  for (const [key, artifact] of Object.entries(state.artifacts)) {
+    const { type, name } = parseArtifactKey(key);
+    const qualified = key.includes(":") ? key : artifactKey("skill", name);
+    artifacts[qualified] = { ...artifact, type: artifact.type ?? type, name: artifact.name ?? name };
+  }
+  return { ...state, version: STATE_VERSION, artifacts };
 }
 
 /** Persist state atomically: write a sibling tmp file then rename over the target. */
@@ -74,14 +107,18 @@ export function saveState(env: SkmEnv, state: StateFile): void {
   fs.renameSync(tmp, file);
 }
 
-/** Upsert one skill's artifact (source + full placement set). Mutates and returns state. */
+/**
+ * Upsert one artifact (source + full placement set), keyed by its type-qualified
+ * `key` (e.g. `skill:foo`). Mutates and returns state.
+ */
 export function recordArtifact(
   state: StateFile,
-  name: string,
+  key: string,
   source: Artifact["source"],
   placements: StatePlacement[],
 ): StateFile {
-  state.artifacts[name] = { source, placements };
+  const { type, name } = parseArtifactKey(key);
+  state.artifacts[key] = { type, name, source, placements };
   return state;
 }
 
@@ -92,16 +129,17 @@ export function recordArtifact(
  */
 export function upsertPlacement(
   state: StateFile,
-  name: string,
+  key: string,
   source: Artifact["source"],
   placement: StatePlacement,
 ): StateFile {
-  const artifact = state.artifacts[name] ?? { source, placements: [] };
+  const { type, name } = parseArtifactKey(key);
+  const artifact = state.artifacts[key] ?? { type, name, source, placements: [] };
   artifact.source = source;
   const want = normalize(placement.path);
   artifact.placements = artifact.placements.filter((p) => normalize(p.path) !== want);
   artifact.placements.push(placement);
-  state.artifacts[name] = artifact;
+  state.artifacts[key] = artifact;
   return state;
 }
 
