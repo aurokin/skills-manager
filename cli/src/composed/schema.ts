@@ -136,6 +136,8 @@ export function loadComposedSkill(input: ComposedSkillInput): {
     name,
     source,
     posture,
+    // Carried for the pure renderer (AUR-646); presence was asserted above.
+    template: input.template,
     consumers,
     dimensions,
     providers,
@@ -292,6 +294,15 @@ function validateConsumersAgainstRegistry(
           `add 'selfProvider: none' to its skill.yaml entry to acknowledge this (${path})`,
       );
     }
+    // The acknowledgment must also be coherent the other way: 'none' declared while
+    // the derived self IS a provider contradicts the registry and would misstate
+    // which provider gets self-excluded.
+    if (selfDir in providers && consumer.selfProvider === "none") {
+      throw new ComposedSkillError(
+        `Consumer '${id}' declares 'selfProvider: none' but its registry ownDir '${selfDir}' IS a declared provider; ` +
+          `remove the acknowledgment (${path})`,
+      );
+    }
 
     // Two consumers resolving to the same target ownDir would fight over one output
     // directory (a build error, from registry data alone).
@@ -387,11 +398,11 @@ function unusedProviderWarnings(
 // Posture markers + consumer sections
 // ─────────────────────────────────────────────────────────────────────────────
 
-const POSTURE_RE = /^<!--\s*@posture\s+(.+?)\s*-->\s*$/;
-const END_RE = /^<!--\s*@end\s*-->\s*$/;
+export const POSTURE_RE = /^<!--\s*@posture\s+(.+?)\s*-->\s*$/;
+export const END_RE = /^<!--\s*@end\s*-->\s*$/;
 const SECTION_RE = /^<!--\s*@section\s+(.+?)\s*-->\s*$/;
 
-type FenceState = { char: string; len: number } | null;
+export type FenceState = { char: string; len: number } | null;
 
 /**
  * CommonMark-style fence tracking for one line: ``` and ~~~ fences, up to three
@@ -399,7 +410,7 @@ type FenceState = { char: string; len: number } | null;
  * char with at least its length and carry nothing but whitespace. Returns the new
  * state and whether this line is itself a fence delimiter.
  */
-function stepFence(fence: FenceState, line: string): { fence: FenceState; isDelimiter: boolean } {
+export function stepFence(fence: FenceState, line: string): { fence: FenceState; isDelimiter: boolean } {
   const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
   if (!m) return { fence, isDelimiter: false };
   const run = m[1]!;

@@ -16,6 +16,7 @@ import { loadContext, registryPath } from "./context";
 import type { SkmEnv } from "./env";
 import { appendAudit, makeAuditEntry } from "./audit";
 import { loadMachineConfig } from "./machine-config";
+import { composedTreeFromSource, treeHashOfMemory, writeComposedTree } from "./composed/render";
 import { buildPlan, planHashOf } from "./plan";
 import { dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -54,7 +55,7 @@ export async function runApply(env: SkmEnv, opts: VerbOptions): Promise<VerbOutc
     : freshPlan(env);
 
   const state = loadState(env);
-  const { refused } = executePlan(env, plan, state, { prune: opts.prune }, config);
+  const { refused } = executePlan(env, plan, state, { prune: opts.prune }, config, registry);
   saveState(env, state);
 
   const summary = summarize(plan, opts.prune, refused);
@@ -113,6 +114,7 @@ export function executePlan(
   state: StateFile,
   opts: { prune: boolean },
   config: MachineConfig,
+  registry: Registry,
 ): { state: StateFile; refused: DriftFinding[] } {
   const refused: DriftFinding[] = [];
   for (const action of plan.actions) {
@@ -124,7 +126,7 @@ export function executePlan(
         break;
       case "create":
       case "update": {
-        const skip = materialize(env, action, state, config);
+        const skip = materialize(env, action, state, config, registry);
         if (skip) refused.push(skip);
         break;
       }
@@ -179,6 +181,7 @@ function materialize(
   action: PlannedAction,
   state: StateFile,
   config: MachineConfig,
+  registry: Registry,
 ): DriftFinding | undefined {
   const src = action.source;
   if (!src) throw new UsageError(`plan action for '${action.skill}' is missing source`);
@@ -217,6 +220,19 @@ function materialize(
     removeExisting(abs);
     fs.writeFileSync(abs, text);
     upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered-file", hash: hashContent(text) });
+  } else if (p.artifactType === "composed-skill") {
+    // Composed rendered tree (ADR 0010). Re-render from the current source for this
+    // consumer (p.agent) and refuse if the tree hash drifted from the reviewed hash.
+    // removeExisting nukes the (classifyRemoval-verified-safe) old dir, so stale files
+    // no longer in the render are dropped. hash == tree by construction.
+    const tree = composedTreeFromSource(src.path, action.skill, src, p.agent, registry);
+    const treeHash = treeHashOfMemory(tree);
+    if (p.hash && treeHash !== p.hash) {
+      return { drift: "stale", skill: action.skill, path: abs, detail: "composed render changed since plan (source edited); re-run plan" };
+    }
+    removeExisting(abs);
+    writeComposedTree(tree, abs);
+    upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered", hash: treeHash, tree: treeHashOf(abs) });
   } else if (p.artifactType === "agent-def") {
     // Single rendered file in a harness's agentDefDir. Re-render from the current
     // source and refuse if it drifted from the reviewed hash (finding 1).

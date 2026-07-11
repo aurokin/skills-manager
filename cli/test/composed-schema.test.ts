@@ -250,6 +250,13 @@ describe("self-derivation guards", () => {
     expect(() => loadComposedSkill(baseInput())).not.toThrow();
   });
 
+  test("selfProvider: none is rejected when the derived self IS a declared provider", () => {
+    const input = withYaml((y) => {
+      y.consumers.codex.selfProvider = "none"; // codex's ownDir 'codex' IS a provider
+    });
+    expect(() => loadComposedSkill(input)).toThrow(/IS a declared provider; remove the acknowledgment/);
+  });
+
   test("selfProvider only accepts \"none\"", () => {
     const input = withYaml((y) => {
       y.consumers.codex.selfProvider = "codex";

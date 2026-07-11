@@ -1,0 +1,38 @@
+===== SKILL.md =====
+---
+name: orchestrate
+description: Delegate parallel bulk work to grok under the deployment posture;
+  keep mechanical work yourself.
+---
+# Orchestrate — for codex
+
+This skill is built for **codex**.
+
+## Safety gate
+
+Implementation runs happen only in a worktree, never the live checkout.
+Keep a structural read-only boundary and confirm before granting full access.
+
+## Delegate or not
+
+
+
+## Routing
+
+Do not construct commands from this table — read the reference first; it is the contract.
+| Dimension | When | Route | Note | Reference |
+| --- | --- | --- | --- | --- |
+| Bounded implementation | clear-spec, mechanical, bulk changes; worktree-isolated | grok/grok-4.5 | offload for parallelism/quota — you are equally strong here | [grok](references/grok.md) |
+
+## Anti-recursion
+
+Never spawn another orchestrator: codex, grok.
+
+===== references/grok.md =====
+
+# grok (grok-4.5)
+
+Prefer `--prompt-file`; the provider API is the data-egress path.
+`--sandbox read-only` is kernel-verified; use it for pure reads.
+
+Anti-recursion: never spawn codex, grok.

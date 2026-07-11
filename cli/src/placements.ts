@@ -7,8 +7,9 @@
 
 import * as path from "node:path";
 import { agentDefExt } from "./agentdef/artifact";
+import { composedTreeHash } from "./composed/render";
 import { type SkmEnv, expandTilde, resolveCopilotHome } from "./env";
-import { enabledAgents } from "./registry";
+import { enabledAgents, readersOf } from "./registry";
 import { solvePlacements } from "./solver";
 import { computeTpromptPlacements } from "./tprompt/channel";
 import type {
@@ -17,6 +18,7 @@ import type {
   AgentScope,
   BleedEntry,
   DesiredAgentDef,
+  DesiredComposedSkill,
   DesiredSkill,
   DesiredState,
   Dialect,
@@ -36,6 +38,8 @@ export interface DesiredPlacement {
   desiredSkill?: DesiredSkill;
   /** Present for agent-def artifacts and derived skills. */
   desiredAgentDef?: DesiredAgentDef;
+  /** Present for composed-skill artifacts (per-consumer rendered tree). */
+  desiredComposed?: DesiredComposedSkill;
   placement: Placement;
 }
 
@@ -117,6 +121,12 @@ export function computeDesiredPlacements(
     } else {
       appendAgentDefFiles(env, registry, enabled, def, placements, unreachable);
     }
+  }
+
+  // Composed skills (ADR 0010): one rendered tree per declared consumer, fanned out
+  // to that consumer's ownDir, bypassing the read-graph solver.
+  for (const composed of desired.composedSkills) {
+    appendComposedSkills(env, registry, enabled, composed, placements, bleed);
   }
 
   // tprompt export channel (ADR 0008): one owned rendered-file prompt per eligible
@@ -210,6 +220,51 @@ function appendAgentDefFiles(
     };
     if (agent.addOnly) placement.addOnly = true;
     placements.push({ skill: def.name, source: def.source, desiredAgentDef: def, placement });
+  }
+}
+
+/**
+ * export composed-skill: one `kind: "rendered"` placement per declared consumer,
+ * fanned out to the consumer's registry ownDir, bypassing the read-graph solver
+ * (ADR 0010). The placement `hash` IS the full rendered-tree hash (the composed
+ * content binding). `deprecated` is read from the registry directory entry itself
+ * (the solver's lookup does not run for us); bleed uses a readers-INCLUDING-
+ * maybeReads variant (the solver's bleedFor excludes maybeReads and would hide,
+ * e.g., grok's read of the claude dir).
+ */
+function appendComposedSkills(
+  env: SkmEnv,
+  registry: Registry,
+  enabled: string[],
+  composed: DesiredComposedSkill,
+  placements: DesiredPlacement[],
+  bleed: BleedEntry[],
+): void {
+  for (const consumer of Object.keys(composed.consumers).sort()) {
+    // Declared consumers are intersected with the machine's enabled agents, like
+    // every other placement type — a machine configured without claude-code must
+    // not receive claude-code's composed tree.
+    if (!enabled.includes(consumer)) continue;
+    const ownDir = registry.agents[consumer]?.ownDir;
+    if (!ownDir) continue; // load-time guards ensure supported consumers have an ownDir
+    const dir = registry.directories[ownDir];
+    if (!dir) continue;
+    const abs = path.join(expandTilde(env, dir.path), composed.name);
+    const placement: Placement = {
+      agent: consumer,
+      dir: ownDir,
+      path: abs,
+      kind: "rendered",
+      artifactType: "composed-skill",
+      hash: composedTreeHash(composed, consumer, registry),
+    };
+    if (dir.deprecated) placement.deprecated = true;
+    const readers = readersOf(registry, ownDir, { includeMaybe: true })
+      .filter((r) => r !== consumer)
+      .sort();
+    if (readers.length > 0) placement.bleed = readers;
+    placements.push({ skill: composed.name, source: composed.source, desiredComposed: composed, placement });
+    if (readers.length > 0) bleed.push({ skill: composed.name, path: abs, agent: consumer, readers });
   }
 }
 

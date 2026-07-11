@@ -1,0 +1,36 @@
+name: orchestrate
+posture: yolo
+consumers:
+  claude-code:
+    description: >-
+      Delegate to codex/grok for bulk implementation, computer-use, and
+      token-heavy investigation; keep taste work yourself. Not for code
+      review — use diffwarden.
+  codex:
+    description: >-
+      Delegate to claude for taste-sensitive judgment and grok for parallel
+      bulk work; keep bulk/mechanical work yourself. Not for code review.
+dimensions:
+  - key: computer-use
+    title: Computer-use / runtime verification
+    when: launching apps, browser automation, screenshots, simulators
+    candidates:
+      - { provider: codex, model: gpt-5.5 }
+  - key: implementation
+    title: Bounded implementation
+    when: clear-spec, mechanical, bulk changes; worktree-isolated
+    candidates:
+      - { provider: codex, model: gpt-5.5 }
+      - { provider: claude, model: opus, note: prefer for API-shaped bulk }
+      - { provider: grok, model: grok-4.5 }
+  - key: investigation
+    title: Token-heavy read-only investigation
+    when: large logs, giant specs/PDFs, screenshot piles
+    candidates:
+      - { provider: claude, model: opus }
+      - { provider: grok, model: grok-4.5 }
+  - key: judgment
+    title: Taste-sensitive judgment / second opinion
+    when: API/SDK design, UI/copy critique, naming, plan review
+    candidates:
+      - { provider: claude, model: opus, note: fable on explicit request }

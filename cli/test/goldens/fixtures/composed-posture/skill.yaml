@@ -1,0 +1,19 @@
+name: orchestrate
+posture: yolo
+consumers:
+  claude-code:
+    selfProvider: none
+    description: >-
+      Delegate bulk implementation to codex/grok under the deployment posture;
+      keep taste work yourself.
+  codex:
+    description: >-
+      Delegate parallel bulk work to grok under the deployment posture; keep
+      mechanical work yourself.
+dimensions:
+  - key: implementation
+    title: Bounded implementation
+    when: clear-spec, mechanical, bulk changes; worktree-isolated
+    candidates:
+      - { provider: codex, model: gpt-5.5 }
+      - { provider: grok, model: grok-4.5 }

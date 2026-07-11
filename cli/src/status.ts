@@ -9,7 +9,7 @@ import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { computeTpromptPlacements } from "./tprompt/channel";
 import { privacyViolation } from "./privacy";
-import { hashContent, renderedHash } from "./render";
+import { hashContent, renderedHash, treeHashOf } from "./render";
 import { classifyTarget, scanEntry, scanForForeign } from "./scan";
 import { findOwner } from "./state";
 import { resolveTpromptCollisions } from "./tprompt/channel";
@@ -87,6 +87,30 @@ export function computeDrift(
           path: sp.path,
           detail: `desired kind changed (${sp.kind} → ${dp.placement.kind}); re-run plan`,
         });
+        continue;
+      }
+
+      // Composed rendered tree (ADR 0010). MUST precede the `rendered` branch below:
+      // a composed placement's hash is the full-tree hash, so the SKILL.md-sha compare
+      // there would false-positive. Compare disk treeHashOf to the recorded tree, then
+      // to the currently-desired tree hash (dp.placement.hash) for source edits.
+      if (artifact.type === "composed-skill") {
+        if (entry.kind !== "dir") {
+          findings.push({ drift: "modified", skill, path: sp.path, detail: "composed tree replaced on disk" });
+          continue;
+        }
+        const diskTree = treeHashOf(abs);
+        if (diskTree !== sp.tree) {
+          findings.push({ drift: "modified", skill, path: sp.path, detail: "composed skill hand-edited" });
+          continue;
+        }
+        if (!dp) {
+          findings.push({ drift: "stale", skill, path: sp.path, detail: "owned placement no longer desired" });
+          continue;
+        }
+        if (dp.placement.hash !== undefined && dp.placement.hash !== sp.tree) {
+          findings.push({ drift: "stale", skill, path: sp.path, detail: "desired composed render changed since apply; re-run plan" });
+        }
         continue;
       }
 

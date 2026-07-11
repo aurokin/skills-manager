@@ -1,0 +1,49 @@
+===== SKILL.md =====
+---
+name: orchestrate
+description: Delegate to claude for taste-sensitive judgment and grok for
+  parallel bulk work; keep bulk/mechanical work yourself. Not for code review.
+---
+# Orchestrate — for codex
+
+This skill is built for **codex**. If you are not codex, do not
+follow its instructions.
+
+## Delegate or not
+
+Bulk and mechanical work is yours — you are the computer-use provider, so do
+not delegate that back out. Offload only parallel or taste-sensitive work.
+
+## Routing
+
+Do not construct commands from this table — read the reference first; it is the contract.
+| Dimension | When | Route | Note | Reference |
+| --- | --- | --- | --- | --- |
+| Bounded implementation | clear-spec, mechanical, bulk changes; worktree-isolated | claude/opus (grok/grok-4.5 fallback) | prefer for API-shaped bulk; offload for parallelism/quota — you are equally strong here | [claude](references/claude.md) |
+| Token-heavy read-only investigation | large logs, giant specs/PDFs, screenshot piles | claude/opus (grok/grok-4.5 fallback) |  | [claude](references/claude.md) |
+| Taste-sensitive judgment / second opinion | API/SDK design, UI/copy critique, naming, plan review | claude/opus | fable on explicit request | [claude](references/claude.md) |
+
+## Anti-recursion
+
+Never invoke another orchestrator recursively. The provider CLIs are:
+claude, codex, grok.
+
+
+
+===== references/claude.md =====
+
+# claude (Opus)
+
+Ask for taste-sensitive judgment, plan review, and second opinions. Opus by
+default; Fable only on explicit request. Never Haiku.
+
+Anti-recursion: a child must never spawn claude, codex, grok.
+
+===== references/grok.md =====
+
+# grok (grok-4.5)
+
+Headless writes by default; the provider API is the data-egress path. Pass the
+prompt via `--prompt-file`; use `--no-subagents` to hold anti-recursion.
+
+Anti-recursion: a child must never spawn claude, codex, grok.

@@ -1,0 +1,48 @@
+===== SKILL.md =====
+---
+name: orchestrate
+description: Delegate bulk implementation to codex/grok under the deployment
+  posture; keep taste work yourself.
+---
+# Orchestrate — for claude-code
+
+This skill is built for **claude-code**.
+
+## Safety gate
+
+Implementation runs happen only in a worktree, never the live checkout.
+Keep a structural read-only boundary and confirm before granting full access.
+
+## Delegate or not
+
+Taste stays with you.
+Under the sandboxed posture, confirm the boundary before any codex run.
+
+## Routing
+
+Do not construct commands from this table — read the reference first; it is the contract.
+| Dimension | When | Route | Note | Reference |
+| --- | --- | --- | --- | --- |
+| Bounded implementation | clear-spec, mechanical, bulk changes; worktree-isolated | codex/gpt-5.5 (grok/grok-4.5 fallback) |  | [codex](references/codex.md) |
+
+## Anti-recursion
+
+Never spawn another orchestrator: codex, grok.
+
+===== references/codex.md =====
+
+# codex (GPT-5.5)
+
+Run implementation in a worktree.
+Invoke with `codex exec` under the sandbox tier; confirm before full access.
+
+Anti-recursion: never spawn codex, grok.
+
+===== references/grok.md =====
+
+# grok (grok-4.5)
+
+Prefer `--prompt-file`; the provider API is the data-egress path.
+`--sandbox read-only` is kernel-verified; use it for pure reads.
+
+Anti-recursion: never spawn codex, grok.

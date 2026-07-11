@@ -11,7 +11,8 @@ import { loadMachineConfig } from "./machine-config";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
 import { dirPath, loadRegistry, readersOf } from "./registry";
-import { hashContent, renderSkill } from "./render";
+import { renderComposedSkill } from "./composed/render";
+import { hashContent, renderSkill, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
 import { artifactKey, loadState, saveState, upsertPlacement } from "./state";
 import { scanEntry, scanRegistryDirs } from "./scan";
@@ -89,6 +90,22 @@ export function diagnose(
     const skill = artifact.name;
     for (const sp of artifact.placements) {
       const entry = scanEntry(env, expandTilde(env, sp.path));
+      // Composed rendered tree (ADR 0010). MUST precede the `rendered` branch: its
+      // hash is the full-tree hash, so the SKILL.md-sha compare there would
+      // false-positive. Composed trees are NOT --fix repairable (applyFixes skips
+      // them); a hand-edit is remedied by remove-then-re-apply → fixable: false.
+      if (artifact.type === "composed-skill") {
+        if (sp.kind === "rendered") {
+          if (entry.kind === "absent") {
+            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: "owned composed tree missing", fixable: false });
+          } else if (entry.kind !== "dir") {
+            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned composed tree replaced by ${entry.kind}`, fixable: false });
+          } else if (treeHashOf(expandTilde(env, sp.path)) !== sp.tree) {
+            findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "composed skill hand-edited (tree hash mismatch)", fixable: false });
+          }
+        }
+        continue;
+      }
       if (sp.kind === "symlink") {
         if (entry.kind === "symlink" && entry.broken) {
           findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `broken owned symlink -> ${entry.linkTarget ?? "?"}`, fixable: true });
@@ -280,6 +297,17 @@ function scanUnmanagedPrivateLeaks(
     const hash = scanEntry(env, skill.source.path).sha256OfSkillMd;
     if (hash) privateSourceHash.set(hash, skill.name);
   }
+  // Composed skills render a distinct SKILL.md per consumer (never a source file on
+  // disk), so index every consumer's EXPECTED rendered SKILL.md content hash — else a
+  // manual copy of a deployed private orchestrate tree in a foreign agent dir is
+  // invisible to exactly the scan that exists to catch it (ADR 0010).
+  for (const composed of desired.composedSkills) {
+    if (composed.source.visibility !== "private") continue;
+    for (const consumer of Object.keys(composed.consumers)) {
+      const skillMd = renderComposedSkill(composed, consumer, registry)["SKILL.md"];
+      if (skillMd) privateSourceHash.set(hashContent(skillMd), composed.name);
+    }
+  }
   const privateRoots = config.roots
     .filter((r) => r.visibility === "private")
     .map((r) => path.resolve(expandTilde(env, r.path)));
@@ -384,6 +412,10 @@ function applyFixes(
 
   let fixed = 0;
   for (const [key, artifact] of Object.entries(state.artifacts)) {
+    // Composed rendered trees are not --fix repairable (re-render needs the composed
+    // path, not renderSkill); diagnose reports them fixable:false, so skip here to
+    // avoid corrupting the tree via the native renderer.
+    if (artifact.type === "composed-skill") continue;
     for (const sp of artifact.placements) {
       const abs = path.resolve(expandTilde(env, sp.path));
       const dp = byPath.get(abs);

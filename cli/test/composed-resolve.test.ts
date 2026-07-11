@@ -141,6 +141,7 @@ describe("hashDesiredState — composed selection identity", () => {
       name: "orchestrate",
       source: { root: "public", visibility: "public", path: "/x/composed/orchestrate" },
       posture: "yolo",
+      template: "Body\n\n{{routing_table}}\n",
       consumers: {
         "claude-code": { description: "d1" },
         codex: { description: "d2" },

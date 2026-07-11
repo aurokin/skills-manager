@@ -48,6 +48,18 @@ export function explainSkill(
     return assemble("skill", skill.name, skill.source, skill.scoping, placements, solved.unreachable);
   }
 
+  // Composed skills fan out per consumer through the shared placement engine; filter
+  // its output to this composed skill by source directory (as the agent-def arm does).
+  const composed = desired.composedSkills.find((c) => c.name === name);
+  if (composed) {
+    const solved = computeDesiredPlacements(env, config, registry, desired);
+    const wantSource = path.resolve(composed.source.path);
+    const placements = solved.placements
+      .filter((dp) => dp.placement.artifactType === "composed-skill" && path.resolve(dp.source.path) === wantSource)
+      .map((dp) => dp.placement);
+    return assemble("composed-skill", composed.name, composed.source, undefined, placements, []);
+  }
+
   // Agent definitions resolve through the shared placement engine; filter its
   // output to this definition by source directory (unique per artifact). Match by
   // the definition name OR its derivedSkillName, so `explain <derived-name>`
