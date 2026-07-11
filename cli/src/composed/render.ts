@@ -159,10 +159,10 @@ function buildRoutingTable(
     if (primary.note) notes.push(primary.note);
     if (dim.candidates[0]!.provider === selfId) notes.push(SELF_NOTE);
 
-    const dimension = dim.title ?? dim.key;
-    const when = dim.when ?? "";
+    const dimension = tableCell(dim.title ?? dim.key);
+    const when = tableCell(dim.when ?? "");
     const reference = `[${primary.provider}](references/${primary.provider}.md)`;
-    rows.push(`| ${dimension} | ${when} | ${route} | ${notes.join("; ")} | ${reference} |`);
+    rows.push(`| ${dimension} | ${when} | ${route} | ${tableCell(notes.join("; "))} | ${reference} |`);
   }
   const table = [
     TABLE_CAPTION,
@@ -171,6 +171,12 @@ function buildRoutingTable(
     ...rows,
   ].join("\n");
   return { table, referenced };
+}
+
+/** Authored values are valid YAML scalars; a `|` or newline inside one must not
+ * add cells/rows to the routing table. */
+function tableCell(value: string): string {
+  return value.replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

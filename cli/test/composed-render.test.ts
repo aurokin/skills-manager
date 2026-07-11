@@ -122,6 +122,19 @@ describe("renderComposedSkill semantics", () => {
     expect(cc["references/grok.md"]).toContain("never spawn claude, codex, grok.");
   });
 
+  test("pipes and newlines in authored values are escaped in table cells", () => {
+    const skill = loadFixture("composed-kitchen-sink");
+    const dim = skill.dimensions.find((d) => d.candidates.some((c) => c.provider !== "claude"))!;
+    dim.when = "read | write tasks";
+    dim.title = "line one\nline two";
+    const tree = renderComposedSkill(skill, "claude-code", registry);
+    const row = tree["SKILL.md"]!.split("\n").find((l) => l.includes("read \\| write tasks"));
+    expect(row).toBeDefined();
+    expect(row!).toContain("line one line two");
+    // The row still has exactly 5 cells: 6 unescaped pipe delimiters.
+    expect(row!.split(/(?<!\\)\|/).length - 2).toBe(5);
+  });
+
   test("a dimension with an empty chain is dropped silently (no row, no reference)", () => {
     const cc = renderComposedSkill(loadFixture("composed-kitchen-sink"), "claude-code", registry);
     // judgment routes only to claude (self) for claude-code → dropped.
