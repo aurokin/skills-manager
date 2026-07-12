@@ -642,7 +642,13 @@ function collectPrunes(
         ...(sp.gated ? { gated: true } : {}),
         ...(sp.agent === "tprompt" ? { channel: "tprompt" as const } : {}),
       };
-      const required = artifact.type === "skill" && gatedSkillNames.has(artifact.name) && sp.gated !== true;
+      // tprompt exports are a prompt channel, not a model-invocable skill placement —
+      // no exposure, so they keep the ordinary --prune opt-in.
+      const required =
+        artifact.type === "skill" &&
+        gatedSkillNames.has(artifact.name) &&
+        sp.gated !== true &&
+        sp.agent !== "tprompt";
       actions.push({
         type: "prune",
         skill: artifact.name,

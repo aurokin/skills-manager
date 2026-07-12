@@ -500,6 +500,30 @@ describe("gated ↔ ungated transitions", () => {
     expect(fs.existsSync(path.join(sandbox.home, ".codex/skills/fleet-update"))).toBe(false);
   });
 
+  test("a stale tprompt export of a gated skill stays behind --prune", async () => {
+    sandbox = makeSandbox({ tprompt: true });
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", {
+      frontmatter: { "disable-model-invocation": true, tprompt: {} },
+    });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    // Drop the tprompt block (skill stays gated): the stale prompt export is a
+    // channel file with no exposure — ordinary --prune cleanup, never forced.
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    const promptPrune = plan.actions.find((a) => a.type === "prune" && a.placement.agent === "tprompt");
+    expect(promptPrune).toBeDefined();
+    expect(promptPrune?.reason).toBeUndefined();
+    expect(plan.requiresPrune).toBe(true);
+
+    const promptPath = path.resolve(promptPrune!.placement.path);
+    await runApply(sandbox.env, opts()); // no --prune → export must survive
+    expect(fs.existsSync(promptPath)).toBe(true);
+  });
+
   test("gated → ungated with the tree replaced by a regular file: foreign, not a crash", async () => {
     sandbox = makeSandbox();
     const root = makeRoot(sandbox, "public");
