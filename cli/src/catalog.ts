@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ConfigError } from "./errors";
-import type { AgentScope, Registry, Root, ScopingSource } from "./types";
+import type { AgentScope, Registry, Root, ScopingSource, SkillGating, SkillScopeEntry } from "./types";
 
 /** Path to the public scoping map for a given public root. */
 export function publicScopingPath(publicRoot: string): string {
@@ -55,46 +55,49 @@ export function validateScopingSource(
   }
 
   const validAgents = reg ? new Set(Object.keys(reg.agents)) : undefined;
-  const skills: Record<string, { agents?: AgentScope }> = {};
+  const skills: Record<string, SkillScopeEntry> = {};
 
   for (const [name, entryRaw] of Object.entries(skillsRaw as Record<string, unknown>)) {
     if (typeof entryRaw !== "object" || entryRaw === null || Array.isArray(entryRaw)) {
       throw new ConfigError(`${srcLabel}: skill '${name}' entry must be an object`);
     }
-    const agentsRaw = (entryRaw as Record<string, unknown>).agents;
-    if (agentsRaw === undefined) {
-      skills[name] = {};
-      continue;
-    }
-    if (typeof agentsRaw !== "object" || agentsRaw === null || Array.isArray(agentsRaw)) {
-      throw new ConfigError(`${srcLabel}: skill '${name}' 'agents' must be an object`);
-    }
-    const a = agentsRaw as Record<string, unknown>;
-    const hasAllow = a.allow !== undefined;
-    const hasDeny = a.deny !== undefined;
-    if (hasAllow === hasDeny) {
-      throw new ConfigError(
-        `${srcLabel}: skill '${name}' must set exactly one of 'allow' or 'deny'`,
-      );
-    }
-    const key = hasAllow ? "allow" : "deny";
-    const list = a[key];
-    if (!Array.isArray(list) || list.some((x) => typeof x !== "string" || x.length === 0)) {
-      throw new ConfigError(
-        `${srcLabel}: skill '${name}' '${key}' must be an array of non-empty strings`,
-      );
-    }
-    const ids = list as string[];
-    if (validAgents) {
-      for (const id of ids) {
-        if (!validAgents.has(id)) {
-          throw new ConfigError(
-            `${srcLabel}: skill '${name}' '${key}' references unknown agent '${id}'`,
-          );
+    const entry = entryRaw as Record<string, unknown>;
+    const out: SkillScopeEntry = {};
+    const agentsRaw = entry.agents;
+    if (agentsRaw !== undefined) {
+      if (typeof agentsRaw !== "object" || agentsRaw === null || Array.isArray(agentsRaw)) {
+        throw new ConfigError(`${srcLabel}: skill '${name}' 'agents' must be an object`);
+      }
+      const a = agentsRaw as Record<string, unknown>;
+      const hasAllow = a.allow !== undefined;
+      const hasDeny = a.deny !== undefined;
+      if (hasAllow === hasDeny) {
+        throw new ConfigError(
+          `${srcLabel}: skill '${name}' must set exactly one of 'allow' or 'deny'`,
+        );
+      }
+      const key = hasAllow ? "allow" : "deny";
+      const list = a[key];
+      if (!Array.isArray(list) || list.some((x) => typeof x !== "string" || x.length === 0)) {
+        throw new ConfigError(
+          `${srcLabel}: skill '${name}' '${key}' must be an array of non-empty strings`,
+        );
+      }
+      const ids = list as string[];
+      if (validAgents) {
+        for (const id of ids) {
+          if (!validAgents.has(id)) {
+            throw new ConfigError(
+              `${srcLabel}: skill '${name}' '${key}' references unknown agent '${id}'`,
+            );
+          }
         }
       }
+      out.agents = hasAllow ? { allow: ids } : { deny: ids };
     }
-    skills[name] = { agents: hasAllow ? { allow: ids } : { deny: ids } };
+    const gating = parseGating(entry.gating, name, srcLabel, reg);
+    if (gating) out.gating = gating;
+    skills[name] = out;
   }
 
   const out: ScopingSource = { version: obj.version as number, skills };
@@ -105,12 +108,66 @@ export function validateScopingSource(
   return out;
 }
 
+/**
+ * Parse + validate a per-skill `gating` block (ADR 0011). `permissive` opts named
+ * no-gate agents in to a gated skill. When `reg` is supplied, each id must exist AND
+ * have no real gate (frontmatter/companion) — opting a real-gate agent in is
+ * meaningless (it already enforces the gate) and rejected. Returns undefined when
+ * absent.
+ */
+function parseGating(
+  raw: unknown,
+  name: string,
+  srcLabel: string,
+  reg?: Registry,
+): SkillGating | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    throw new ConfigError(`${srcLabel}: skill '${name}' 'gating' must be an object`);
+  }
+  const permissiveRaw = (raw as Record<string, unknown>).permissive;
+  if (
+    !Array.isArray(permissiveRaw) ||
+    permissiveRaw.some((x) => typeof x !== "string" || x.length === 0)
+  ) {
+    throw new ConfigError(
+      `${srcLabel}: skill '${name}' gating.permissive must be an array of non-empty agent ids`,
+    );
+  }
+  const permissive = permissiveRaw as string[];
+  if (reg) {
+    for (const id of permissive) {
+      const agent = reg.agents[id];
+      if (!agent) {
+        throw new ConfigError(
+          `${srcLabel}: skill '${name}' gating.permissive references unknown agent '${id}'`,
+        );
+      }
+      const gate = agent.skillInvocation?.gate;
+      if (gate !== undefined && gate !== "none" && gate !== "unknown") {
+        throw new ConfigError(
+          `${srcLabel}: skill '${name}' gating.permissive names '${id}', which already enforces a real gate ('${gate}'); permissive is only for no-gate agents`,
+        );
+      }
+    }
+  }
+  return { permissive };
+}
+
 /** Resolve one skill's scope from a source, or undefined when unscoped. */
 export function scopingForSkill(
   source: ScopingSource | undefined,
   name: string,
 ): AgentScope | undefined {
   return source?.skills?.[name]?.agents;
+}
+
+/** Resolve one skill's gated-placement override from a source, or undefined when absent. */
+export function gatingForSkill(
+  source: ScopingSource | undefined,
+  name: string,
+): SkillGating | undefined {
+  return source?.skills?.[name]?.gating;
 }
 
 /**

@@ -18,7 +18,11 @@ its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 > the bash engine, adding agent-scoped skills, private overlay repos,
 > composed skills (one source rendered per consumer — routing tables,
 > self-exclusion, compile-time posture;
-> [ADR 0010](docs/adr/0010-composed-skills-artifact-type.md)), and
+> [ADR 0010](docs/adr/0010-composed-skills-artifact-type.md)), gated
+> (user-invoked-only) skills (`disable-model-invocation: true` translated to
+> each agent's gate — frontmatter or a codex companion file — placed only into
+> gate-honoring agents' own dirs;
+> [ADR 0011](docs/adr/0011-user-invoked-only-skill-gating.md)), and
 > Terraform-style plan/apply with an ownership state file. Design:
 > [docs/skills-manager-design.md](docs/skills-manager-design.md) · decisions:
 > [docs/adr/](docs/adr/) · usage: [cli/README.md](cli/README.md). The bash

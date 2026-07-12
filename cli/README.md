@@ -28,6 +28,19 @@ In scope:
   is the full rendered-tree hash; hand-edited trees are detected by
   `status`/`doctor` and repaired by remove-then-re-apply
   ([ADR 0010](../docs/adr/0010-composed-skills-artifact-type.md)).
+- **Gated (user-invoked-only) skills.** Any local skill whose source `SKILL.md`
+  frontmatter declares `disable-model-invocation: true`. The declared intent is
+  translated per agent from `registry/agents.json`'s `skillInvocation.gate`:
+  gate-honoring agents (frontmatter, or codex's `agents/openai.yaml` companion)
+  get the skill as a **rendered tree** in their own dir — never a symlink, never a
+  shared root (a forced shared root is a hard error). No-gate/unknown agents are
+  excluded unless an overlay opts them in per-skill
+  (`gating: { permissive: ["gemini-cli", ...] }`, relying on the skill's prose
+  gate). The placement hash covers every rendered file (SKILL.md + companion),
+  reusing the composed tree-hash binding, so a tampered/deleted companion drifts;
+  `doctor` also flags gated skills found in a shared root or a no-gate agent's dir,
+  and warns when an agent's installed CLI has drifted from its probed gate version
+  ([ADR 0011](../docs/adr/0011-user-invoked-only-skill-gating.md)).
 - **Ownership state** + `plan`/`apply` (Terraform-style), drift `status`,
   `doctor`, `explain`.
 

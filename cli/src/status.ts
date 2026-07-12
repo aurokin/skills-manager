@@ -90,18 +90,21 @@ export function computeDrift(
         continue;
       }
 
-      // Composed rendered tree (ADR 0010). MUST precede the `rendered` branch below:
-      // a composed placement's hash is the full-tree hash, so the SKILL.md-sha compare
-      // there would false-positive. Compare disk treeHashOf to the recorded tree, then
-      // to the currently-desired tree hash (dp.placement.hash) for source edits.
-      if (artifact.type === "composed-skill") {
+      // Tree-hashed rendered placement: a composed-skill consumer tree (ADR 0010) or a
+      // gated-skill tree (ADR 0011). MUST precede the `rendered` branch below: its hash
+      // is the full-tree hash, so the SKILL.md-sha compare there would false-positive.
+      // Compare disk treeHashOf to the recorded tree, then to the currently-desired tree
+      // hash (dp.placement.hash) for source edits. Gatedness is per-placement (a gated
+      // skill's artifact type stays "skill"), so key off sp.gated too.
+      if (artifact.type === "composed-skill" || sp.gated) {
+        const noun = sp.gated ? "gated skill" : "composed skill";
         if (entry.kind !== "dir") {
-          findings.push({ drift: "modified", skill, path: sp.path, detail: "composed tree replaced on disk" });
+          findings.push({ drift: "modified", skill, path: sp.path, detail: `${noun} tree replaced on disk` });
           continue;
         }
         const diskTree = treeHashOf(abs);
         if (diskTree !== sp.tree) {
-          findings.push({ drift: "modified", skill, path: sp.path, detail: "composed skill hand-edited" });
+          findings.push({ drift: "modified", skill, path: sp.path, detail: `${noun} hand-edited` });
           continue;
         }
         if (!dp) {
@@ -109,7 +112,7 @@ export function computeDrift(
           continue;
         }
         if (dp.placement.hash !== undefined && dp.placement.hash !== sp.tree) {
-          findings.push({ drift: "stale", skill, path: sp.path, detail: "desired composed render changed since apply; re-run plan" });
+          findings.push({ drift: "stale", skill, path: sp.path, detail: `desired ${noun} render changed since apply; re-run plan` });
         }
         continue;
       }

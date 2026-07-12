@@ -4,6 +4,7 @@
 // Determinism: time comes from clock.now(), machine name is injected — no
 // Date.now()/os.hostname() sprinkled through business logic.
 
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -34,6 +35,13 @@ export interface SkmEnv {
    * Absent → channel treated as unavailable (safe: no writes, no prunes).
    */
   tpromptProbe?: () => boolean;
+  /**
+   * Installed-CLI version probe for gated-skill gate-drift detection (ADR 0011,
+   * doctor finding c): given an agent id, return the version string the agent's CLI
+   * reports, or undefined when the binary is missing / output is unparseable. Injected
+   * so tests decide versions without spawning real binaries. Absent → drift check skips.
+   */
+  agentVersionProbe?: (agentId: string) => string | undefined;
 }
 
 /** Production environment: real home, process env, wall-clock, real hostname. */
@@ -46,7 +54,39 @@ export function realEnv(): SkmEnv {
     machineName: os.hostname(),
     clock: { now: () => new Date().toISOString() },
     tpromptProbe: () => binaryOnPath("tprompt"),
+    agentVersionProbe: (agentId) => probeAgentVersion(agentId),
   };
+}
+
+/** Registry agent id → CLI binary name for the gate-version probe (gate-honoring agents). */
+const AGENT_CLI: Record<string, string> = {
+  "claude-code": "claude",
+  codex: "codex",
+  "github-copilot": "copilot",
+  cursor: "cursor-agent",
+  grok: "grok",
+  pi: "pi",
+  droid: "droid",
+};
+
+/**
+ * Best-effort installed-CLI version for one agent: run `<cli> --version` and pull the
+ * first dotted-version token out of stdout. Returns undefined when the binary is
+ * unknown/missing or the output has no parseable version — the caller then skips the
+ * drift check silently (ADR 0011). Kept cheap: a single short-timeout subprocess.
+ */
+function probeAgentVersion(agentId: string): string | undefined {
+  const bin = AGENT_CLI[agentId];
+  if (!bin || !binaryOnPath(bin)) return undefined;
+  let out: ReturnType<typeof spawnSync>;
+  try {
+    out = spawnSync(bin, ["--version"], { encoding: "utf8", timeout: 3000 });
+  } catch {
+    return undefined;
+  }
+  if (out.status !== 0 && !out.stdout) return undefined;
+  const m = /\d+\.\d+(?:\.\d+)?(?:[.\d]+)?/.exec(`${out.stdout ?? ""}`);
+  return m ? m[0] : undefined;
 }
 
 /** True when an executable named `bin` exists on any PATH directory. */

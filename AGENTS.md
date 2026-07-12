@@ -5,6 +5,7 @@ This repo manages a curated set of agent skills (for Claude Code, Codex, OpenCod
 2. **Local skills** in `skills/` symlinked into `~/.agents/skills` and `~/.claude/skills`
 3. **Agent definitions** in `agents/` (one `agent.yaml` + `instructions.md` per subagent), rendered per-harness by `skm` into each agent's definitions dir (`~/.claude/agents/*.md`, `~/.codex/agents/*.toml`, `~/.copilot/agents/*.agent.md`, `~/.cursor/agents/*.md`, `~/.gemini/agents/*.md`, `~/.config/opencode/agent/*.md`)
 4. **Composed skills** in `composed/<name>/` of any root (`skill.yaml` + `SKILL.tmpl.md` + `providers/*.md` + `consumers/*.md`), rendered by `skm` into one skill tree per declared consumer (routing table, self-exclusion, compile-time posture, only-referenced provider references). See ADR 0010; the shipped example is `orchestrate` in the private overlay root.
+5. **Gated (user-invoked-only) skills** — any local skill whose `SKILL.md` frontmatter declares `disable-model-invocation: true`. `skm` translates that one portable intent line into each agent's actual gate (frontmatter passthrough, or a codex `agents/openai.yaml` companion) and places the skill as a rendered tree ONLY into gate-honoring agents' own dirs — never a symlink, never a shared root. Per-skill overlay `gating: { permissive: [...] }` opts named no-gate agents in (prose gate). See ADR 0011.
 
 A TypeScript CLI (`skm`, under `cli/`, run with `bun`) is replacing the bash
 engine per `docs/skills-manager-design.md` and the ADRs in `docs/adr/`. It
@@ -80,6 +81,14 @@ belong in a private overlay root or machine config).
 ## Adding a New Local Skill
 
 Create `skills/<name>/SKILL.md` with frontmatter and prompt content, then run either install script.
+
+## Making a Skill Gated (User-Invoked-Only)
+
+Add `disable-model-invocation: true` to the skill's `SKILL.md` frontmatter. `skm`
+then places it (as rendered trees, never symlinks) only into agents whose registry
+`skillInvocation.gate` is a real gate; no-gate agents are excluded unless an overlay
+`skills.<name>.gating.permissive` list opts them in. Codex additionally gets an
+`agents/openai.yaml` companion. See ADR 0011. Run `skm plan` / `skm apply`.
 
 ## Adding a New Agent Definition
 

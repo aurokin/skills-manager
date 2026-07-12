@@ -1,0 +1,5 @@
+interface:
+  color: blue
+policy:
+  some_other: keep
+  allow_implicit_invocation: false

@@ -8,6 +8,7 @@
 import * as path from "node:path";
 import { agentDefExt } from "./agentdef/artifact";
 import { composedTreeHash } from "./composed/render";
+import { gatedTreeHash } from "./gated";
 import { type SkmEnv, expandTilde, resolveCopilotHome } from "./env";
 import { enabledAgents, readersOf } from "./registry";
 import { solvePlacements } from "./solver";
@@ -98,11 +99,16 @@ export function computeDesiredPlacements(
     const solved = solvePlacements(skill, config, registry);
     for (const p of solved.placements) {
       const abs = expandTilde(env, p.path);
+      const placement: Placement = { ...p, path: abs };
+      // Gated placements bind the full rendered tree (SKILL.md + companion) as their
+      // hash, like composed skills (ADR 0010/0011). The solver is fs-free, so the tree
+      // hash is computed here where the source is readable.
+      if (placement.gated) placement.hash = gatedTreeHash(skill, p.agent, p.dir, registry);
       placements.push({
         skill: skill.name,
         source: skill.source,
         desiredSkill: skill,
-        placement: { ...p, path: abs },
+        placement,
       });
       if (p.bleed && p.bleed.length > 0) {
         bleed.push({ skill: skill.name, path: abs, agent: p.agent, readers: p.bleed });

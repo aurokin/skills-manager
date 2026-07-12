@@ -41,7 +41,7 @@ export function renderedSkillMd(skill: DesiredSkill, dialect: Dialect): string {
 }
 
 /** Convert an ordered plain-object frontmatter into a Document AST. */
-function plainToDocument(record: Record<string, unknown>): Document {
+export function plainToDocument(record: Record<string, unknown>): Document {
   const builder = doc();
   for (const [key, value] of Object.entries(record)) {
     builder.set(key, plainToDocValue(value));

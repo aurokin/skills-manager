@@ -36,3 +36,16 @@ export class CollisionError extends Error {
     this.name = "CollisionError";
   }
 }
+
+/**
+ * A gated (user-invoked-only) skill cannot be placed safely (ADR 0011): its
+ * placement would land in a shared root where the gate is not enforced, or its
+ * source ships a companion file whose intent contradicts the gate. Hard-fails the
+ * plan deterministically, surfaced rather than silently skipped.
+ */
+export class GatingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GatingError";
+  }
+}

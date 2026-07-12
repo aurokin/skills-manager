@@ -137,10 +137,10 @@ export function buildPlan(
     if (p.channel === "tprompt") {
       // Foreign stem collision → reported above, skip this placement only.
       if (!tpromptSkip.has(path.resolve(p.path))) diffTpromptFile(env, dp, state, actions, warnings, foreign);
-    } else if (p.artifactType === "composed-skill") {
-      // MUST precede the `rendered` branch: a composed placement's hash is the full
-      // tree hash, so diffRendered's SKILL.md-sha compare would false-positive.
-      diffComposed(env, dp, state, actions, warnings, foreign);
+    } else if (p.artifactType === "composed-skill" || p.gated) {
+      // MUST precede the `rendered` branch: a composed OR gated placement's hash is the
+      // full tree hash, so diffRendered's SKILL.md-sha compare would false-positive.
+      diffTreeRendered(env, dp, state, actions, warnings, foreign);
     } else if (p.artifactType === "agent-def") {
       diffAgentDefFile(env, dp, state, actions, warnings, foreign);
     } else if (p.kind === "rendered") {
@@ -208,6 +208,9 @@ export function planHashOf(
           // Export channel: omitting it would let a reviewed --plan flip a tprompt
           // prompt to a harness placement (or vice versa) at the same path.
           channel: a.placement.channel ?? null,
+          // Gated marker: omitting it would let a reviewed --plan flip a gated tree
+          // render (tree-hash bound) to a plain symlink/rendered skill, un-gating it.
+          gated: a.placement.gated ?? null,
         },
         // Prune actions carry an empty source path → normalize to null.
         source: a.source
@@ -372,16 +375,17 @@ function diffRendered(
 }
 
 /**
- * Diff one composed-skill rendered tree (ADR 0010). The placement `hash` already IS
- * the expected in-memory full-tree hash (set at placement time); disk state is the
- * on-disk `treeHashOf`. Mirrors diffRendered but keyed on the tree hash: absent →
- * create; owned + disk matches recorded tree + matches expected → noop; owned + disk
- * matches recorded but expected differs (source edit) → update; owned + disk diverged
- * from the recorded tree (hand-edit) → warn + NO action (remedy: remove-then-re-apply,
- * because a composed placement is doctor-non-fixable); unowned + disk matches expected
- * → adopt; anything else → foreign.
+ * Diff one tree-hashed rendered placement — a composed-skill consumer tree (ADR 0010)
+ * or a gated-skill tree (ADR 0011). The placement `hash` already IS the expected
+ * in-memory full-tree hash (set at placement time); disk state is the on-disk
+ * `treeHashOf`. Mirrors diffRendered but keyed on the tree hash: absent → create;
+ * owned + disk matches recorded tree + matches expected → noop; owned + disk matches
+ * recorded but expected differs (source edit) → update; owned + disk diverged from the
+ * recorded tree (hand-edit) → warn + NO action (remedy: remove-then-re-apply, both
+ * artifact kinds are doctor-non-fixable); unowned + disk matches expected → adopt;
+ * anything else → foreign.
  */
-function diffComposed(
+function diffTreeRendered(
   env: SkmEnv,
   dp: DesiredPlacement,
   state: StateFile,
@@ -390,6 +394,7 @@ function diffComposed(
   foreign: DriftFinding[],
 ): void {
   const p = dp.placement;
+  const noun = p.gated ? "gated skill" : "composed skill";
   const expectedHash = p.hash!; // the full rendered-tree hash, computed at placement time
   const owner = findOwner(state, p.path);
   const entry = scanEntry(env, p.path);
@@ -405,12 +410,12 @@ function diffComposed(
       if (recordedTree && diskTree === recordedTree) {
         actions.push(baseAction(dp, recordedTree === expectedHash ? "noop" : "update", p));
       } else {
-        // Disk diverged from skm's recorded render → hand-edited. Composed placements
-        // are non-fixable, so the remedy is remove-then-re-apply (plain apply won't).
+        // Disk diverged from skm's recorded render → hand-edited. Tree-rendered
+        // placements are non-fixable, so the remedy is remove-then-re-apply.
         warnings.push({
           kind: "modified",
           skill: dp.skill,
-          message: `composed skill '${dp.skill}' at ${p.path} was hand-edited; not overwritten (remove it and re-apply to restore skm's render)`,
+          message: `${noun} '${dp.skill}' at ${p.path} was hand-edited; not overwritten (remove it and re-apply to restore skm's render)`,
         });
       }
     } else if (diskTree === expectedHash) {
@@ -420,7 +425,7 @@ function diffComposed(
     }
     return;
   }
-  // A symlink/file sits where a composed rendered dir belongs.
+  // A symlink/file sits where a rendered tree belongs.
   if (owner && entry.kind === "symlink") {
     actions.push(baseAction(dp, "create", p)); // unlinking a link loses nothing → re-render
   } else {
@@ -560,6 +565,7 @@ function collectPrunes(
         kind: sp.kind,
         hash: sp.hash,
         artifactType: artifact.type,
+        ...(sp.gated ? { gated: true } : {}),
         ...(sp.agent === "tprompt" ? { channel: "tprompt" as const } : {}),
       };
       actions.push({ type: "prune", skill: artifact.name, placement, source: { root: artifact.source.root, visibility: artifact.source.visibility, path: "" } });

@@ -40,7 +40,7 @@ export type SkillUserInvocation = "slash" | "mention" | "none" | "unknown";
  */
 export type SkillGate = "frontmatter" | "companion:agents/openai.yaml" | "none" | "unknown";
 
-/** Probed skill-invocation capability (ADR 0011). Parse/validate only until gated placement lands. */
+/** Probed skill-invocation capability (ADR 0011). Consumed by gated-skill placement. */
 export interface SkillInvocation {
   userInvocation: SkillUserInvocation;
   gate: SkillGate;
@@ -91,7 +91,8 @@ export interface AgentCapability {
   /** Evidence citation for the agent-definition support decision. */
   agentDefEvidence?: string;
   // ── Skill-invocation gating capability (ADR 0011). ──
-  // Parse/validate only; gated placement consumes it in a later phase.
+  // Consumed by the gated-skill solver (which agents honor a gate) and by
+  // per-agent gate rendering (frontmatter passthrough vs companion emission).
   skillInvocation?: SkillInvocation;
 }
 
@@ -135,6 +136,22 @@ export interface AgentScope {
   deny?: string[];
 }
 
+/**
+ * Per-skill gated-placement override (ADR 0011). `permissive` opts named no-gate
+ * agents in to receiving a gated skill in their OWN dir, relying on the skill's
+ * prose gate. Each entry must name an agent whose registry gate is none/unknown —
+ * naming a real-gate agent is meaningless and rejected at load time.
+ */
+export interface SkillGating {
+  permissive: string[];
+}
+
+/** One skill's scoping-source entry: agent scoping + optional gated-placement override. */
+export interface SkillScopeEntry {
+  agents?: AgentScope;
+  gating?: SkillGating;
+}
+
 /** Parsed scoping map — shape shared by the public catalog and overlay manifests. */
 export interface ScopingSource {
   version: number;
@@ -145,7 +162,7 @@ export interface ScopingSource {
   requiresPublic?: string;
   /** Upstream specs the overlay contributes (out of v1 scope; carried for parity). */
   upstream?: string[];
-  skills: Record<string, { agents?: AgentScope }>;
+  skills: Record<string, SkillScopeEntry>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -180,6 +197,14 @@ export interface DesiredSkill {
   overrides: AgentOverrides;
   /** Parsed `tprompt:` frontmatter block (ADR 0008); present iff `enabled`. */
   tprompt?: TpromptBlock;
+  /**
+   * Source SKILL.md declared `disable-model-invocation: true` (ADR 0011): the skill
+   * is user-invoked-only. Gated skills place ONLY into gate-honoring agents' own
+   * dirs, as rendered trees (never symlinks, never a shared root).
+   */
+  gated?: boolean;
+  /** Per-skill gated-placement override (permissive no-gate opt-ins). */
+  gating?: SkillGating;
 }
 
 /**
@@ -364,6 +389,12 @@ export interface Placement {
   deprecated?: boolean;
   /** Add-only target (hermes): apply never prunes or overwrites it. */
   addOnly?: boolean;
+  /**
+   * Gated (user-invoked-only) skill placement (ADR 0011). Forces `kind: "rendered"`
+   * and a full-tree `hash` (SKILL.md + any companion), reusing the composed
+   * tree-hash binding; plan/status/doctor route it through the tree-hash arm.
+   */
+  gated?: boolean;
 }
 
 /** Output of the read-graph solver for one scoped skill. */
@@ -473,6 +504,15 @@ export interface StatePlacement {
    * artifacts recorded by schema v1 — see classifyRemoval's legacy fallback.
    */
   tree?: string;
+  /**
+   * Gated (user-invoked-only) skill placement (ADR 0011). A gated skill is a native
+   * skill (artifact type stays "skill"), so status/doctor cannot key its tree-hash
+   * semantics off the artifact type the way composed skills do; this per-placement
+   * flag records that `hash`/`tree` are full-tree hashes, not a SKILL.md sha. Additive
+   * and ignored by older skm (which degrades to refusing updates, never mis-deleting),
+   * so no STATE_VERSION bump is warranted.
+   */
+  gated?: boolean;
 }
 
 export interface Artifact {
@@ -519,7 +559,13 @@ export type FindingCategory =
   | "reconcile"
   // An agent definition's default-skills entry names a skill hidden from (or
   // absent for) the harness the definition is placed on (AUR-616).
-  | "skill-reference";
+  | "skill-reference"
+  // A gated skill discovered on disk where its gate is not enforced: a shared root,
+  // or a no-gate agent's dir without a permissive override (ADR 0011).
+  | "gated-leak"
+  // The installed CLI version drifted from the registry's probed gate version for an
+  // agent actually receiving gated skills (ADR 0011); the gate may behave differently.
+  | "gate-version-drift";
 
 export interface Finding {
   category: FindingCategory;

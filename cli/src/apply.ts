@@ -17,6 +17,7 @@ import type { SkmEnv } from "./env";
 import { appendAudit, makeAuditEntry } from "./audit";
 import { loadMachineConfig } from "./machine-config";
 import { composedTreeFromSource, treeHashOfMemory, writeComposedTree } from "./composed/render";
+import { hashGatedTree, renderGatedTree, writeGatedTree } from "./gated";
 import { buildPlan, planHashOf } from "./plan";
 import { dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -167,6 +168,7 @@ function recordPlacement(state: StateFile, action: PlannedAction): void {
       kind: p.kind,
       ...(p.hash ? { hash: p.hash } : {}),
       ...(tree ? { tree } : {}),
+      ...(p.gated ? { gated: true } : {}),
     },
   );
 }
@@ -243,6 +245,26 @@ function materialize(
     removeExisting(abs);
     fs.writeFileSync(abs, text);
     upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered-file", hash: hashContent(text) });
+  } else if (p.gated) {
+    // Gated (user-invoked-only) skill tree (ADR 0011). Re-render for this agent
+    // (p.agent) into its own dir and refuse if the tree hash drifted from the reviewed
+    // hash (source or override edited in the plan→apply gap). removeExisting nukes the
+    // classifyRemoval-verified-safe old dir, so files no longer in the render are dropped.
+    // hash == tree by construction (both the full-tree hash).
+    const skill: DesiredSkill = {
+      name: action.skill,
+      source: src,
+      overrides: action.overrides ?? {},
+      gated: true,
+    };
+    const tree = renderGatedTree(skill, p.agent, p.dir, registry);
+    const treeHash = hashGatedTree(tree);
+    if (p.hash && treeHash !== p.hash) {
+      return { drift: "stale", skill: action.skill, path: abs, detail: "gated render changed since plan (source or override edited); re-run plan" };
+    }
+    removeExisting(abs);
+    writeGatedTree(tree, abs);
+    upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered", hash: treeHash, tree: treeHashOf(abs), gated: true });
   } else if (p.derived) {
     // Derived skill: render-only SKILL.md dir (no source tree to copy).
     const hermes = p.agent === "hermes";

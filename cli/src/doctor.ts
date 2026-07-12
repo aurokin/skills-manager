@@ -5,8 +5,10 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { loadContext, registryPath } from "./context";
 import { type SkmEnv, expandTilde } from "./env";
+import { gateHonored } from "./gated";
 import { loadMachineConfig } from "./machine-config";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -15,7 +17,7 @@ import { renderComposedSkill } from "./composed/render";
 import { hashContent, renderSkill, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
 import { artifactKey, loadState, saveState, upsertPlacement } from "./state";
-import { scanEntry, scanRegistryDirs } from "./scan";
+import { type ScanEntry, scanEntry, scanRegistryDirs } from "./scan";
 import type {
   AgentScope,
   DesiredSkill,
@@ -90,18 +92,22 @@ export function diagnose(
     const skill = artifact.name;
     for (const sp of artifact.placements) {
       const entry = scanEntry(env, expandTilde(env, sp.path));
-      // Composed rendered tree (ADR 0010). MUST precede the `rendered` branch: its
-      // hash is the full-tree hash, so the SKILL.md-sha compare there would
-      // false-positive. Composed trees are NOT --fix repairable (applyFixes skips
-      // them); a hand-edit is remedied by remove-then-re-apply → fixable: false.
-      if (artifact.type === "composed-skill") {
+      // Tree-hashed rendered placement: a composed-skill consumer tree (ADR 0010) or a
+      // gated-skill tree (ADR 0011). MUST precede the `rendered` branch: its hash is the
+      // full-tree hash, so the SKILL.md-sha compare there would false-positive. Neither
+      // is --fix repairable (applyFixes skips them); a hand-edit is remedied by
+      // remove-then-re-apply → fixable: false. Gatedness is per-placement (a gated
+      // skill's artifact type stays "skill"), so key off sp.gated too.
+      if (artifact.type === "composed-skill" || sp.gated) {
+        const treeNoun = sp.gated ? "gated skill tree" : "composed tree";
+        const editNoun = sp.gated ? "gated skill" : "composed skill";
         if (sp.kind === "rendered") {
           if (entry.kind === "absent") {
-            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: "owned composed tree missing", fixable: false });
+            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned ${treeNoun} missing`, fixable: false });
           } else if (entry.kind !== "dir") {
-            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned composed tree replaced by ${entry.kind}`, fixable: false });
+            findings.push({ category: "broken-link", severity: "error", skill, path: sp.path, message: `owned ${treeNoun} replaced by ${entry.kind}`, fixable: false });
           } else if (treeHashOf(expandTilde(env, sp.path)) !== sp.tree) {
-            findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: "composed skill hand-edited (tree hash mismatch)", fixable: false });
+            findings.push({ category: "reconcile", severity: "warn", skill, path: sp.path, message: `${editNoun} hand-edited (tree hash mismatch)`, fixable: false });
           }
         }
         continue;
@@ -155,7 +161,122 @@ export function diagnose(
   //    skill that is hidden from (or absent for) the harness it is placed on.
   findings.push(...agentDefSkillReferences(env, config, registry, desired));
 
+  // 7. Gated (user-invoked-only) skill placement leaks (ADR 0011): a gated skill found
+  //    on disk in a shared root (finding a), or in a no-gate agent's own dir without a
+  //    permissive override (finding b) — either exposes it to the model invocation the
+  //    gate exists to prevent.
+  findings.push(...gatedPlacementLeaks(env, registry, desired));
+
+  // 8. Gate-version drift (ADR 0011, finding c): the installed CLI drifted from the
+  //    probed gate version for an agent actually receiving gated skills.
+  findings.push(...gateVersionDrift(env, config, registry, desired));
+
   return findings;
+}
+
+/**
+ * Scan every registry dir for a gated skill (SKILL.md frontmatter
+ * `disable-model-invocation: true`) sitting where its gate is not enforced: the shared
+ * root (readable by every agent — finding a), or a no-gate agent's OWN dir with no
+ * permissive opt-in (finding b). Both are errors: the skill the user marked
+ * user-invoked-only is model-exposed there. Owned, correctly-gated placements (an
+ * agent whose own gate honors the frontmatter) are fine and pass silently.
+ */
+function gatedPlacementLeaks(env: SkmEnv, registry: Registry, desired: DesiredState): Finding[] {
+  const permissiveByName = new Map<string, Set<string>>();
+  for (const s of desired.skills) {
+    if (s.gated) permissiveByName.set(s.name, new Set(s.gating?.permissive ?? []));
+  }
+  const ownerByDir = new Map<string, string>();
+  for (const [id, a] of Object.entries(registry.agents)) {
+    if (a.ownDir) ownerByDir.set(a.ownDir, id);
+  }
+
+  const findings: Finding[] = [];
+  for (const [dirId, entries] of Object.entries(scanRegistryDirs(env, registry))) {
+    for (const entry of entries) {
+      if (!isGatedOnDisk(entry)) continue;
+      if (dirId === "shared") {
+        findings.push({
+          category: "gated-leak",
+          severity: "error",
+          skill: entry.name,
+          path: entry.path,
+          message: `gated skill '${entry.name}' is placed in the shared root '${dirId}', where every agent reads it and the gate is not enforced`,
+          fixable: false,
+        });
+        continue;
+      }
+      const owner = ownerByDir.get(dirId);
+      if (!owner || gateHonored(registry.agents[owner]?.skillInvocation?.gate)) continue;
+      if (permissiveByName.get(entry.name)?.has(owner)) continue; // explicit prose-gated opt-in
+      findings.push({
+        category: "gated-leak",
+        severity: "error",
+        skill: entry.name,
+        path: entry.path,
+        message: `gated skill '${entry.name}' is placed in no-gate agent '${owner}' dir '${dirId}', which cannot enforce the gate and has no permissive override`,
+        fixable: false,
+      });
+    }
+  }
+  return findings;
+}
+
+/**
+ * Warn when the installed CLI version has drifted from the registry's probed gate
+ * version for any agent actually receiving gated skills (ADR 0011). Gate behavior is
+ * version-behavior (copilot's is undocumented), so a drift means the gate may no longer
+ * hold. Best-effort: the version probe is injected; a missing binary or unparseable
+ * output skips silently. Only runs for agents with gated placements, keeping it cheap.
+ */
+function gateVersionDrift(env: SkmEnv, config: MachineConfig, registry: Registry, desired: DesiredState): Finding[] {
+  if (!env.agentVersionProbe) return [];
+  const agents = new Set<string>();
+  for (const dp of computeDesiredPlacements(env, config, registry, desired).placements) {
+    if (dp.placement.gated) agents.add(dp.placement.agent);
+  }
+  const findings: Finding[] = [];
+  for (const agentId of [...agents].sort()) {
+    const si = registry.agents[agentId]?.skillInvocation;
+    if (!si?.probedVersion) continue;
+    const installed = env.agentVersionProbe(agentId);
+    if (installed === undefined || installed === si.probedVersion) continue;
+    findings.push({
+      category: "gate-version-drift",
+      severity: "warn",
+      message: `${agentId} CLI is ${installed}, but its gate was probed against ${si.probedVersion} — re-verify disable-model-invocation still holds before relying on it`,
+      fixable: false,
+    });
+  }
+  return findings;
+}
+
+/** True when the entry's SKILL.md frontmatter declares `disable-model-invocation: true`. */
+function isGatedOnDisk(entry: ScanEntry): boolean {
+  const dir =
+    entry.kind === "dir" ? entry.path : entry.kind === "symlink" ? entry.resolvedTarget : undefined;
+  if (!dir) return false;
+  let raw: string;
+  try {
+    raw = fs.readFileSync(path.join(dir, "SKILL.md"), "utf8");
+  } catch {
+    return false;
+  }
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(raw);
+  if (!m) return false;
+  let fm: unknown;
+  try {
+    fm = parseYaml(m[1] ?? "");
+  } catch {
+    return false;
+  }
+  return (
+    typeof fm === "object" &&
+    fm !== null &&
+    !Array.isArray(fm) &&
+    (fm as Record<string, unknown>)["disable-model-invocation"] === true
+  );
 }
 
 /**
@@ -417,6 +538,9 @@ function applyFixes(
     // avoid corrupting the tree via the native renderer.
     if (artifact.type === "composed-skill") continue;
     for (const sp of artifact.placements) {
+      // Gated skill trees are not --fix repairable either (re-render needs the gated
+      // path, not renderSkill); diagnose reports them fixable:false, so skip here.
+      if (sp.gated) continue;
       const abs = path.resolve(expandTilde(env, sp.path));
       const dp = byPath.get(abs);
       if (!dp) continue; // only repair owned + still-desired placements

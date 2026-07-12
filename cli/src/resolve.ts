@@ -10,7 +10,7 @@ import { deriveSkillName } from "./agentdef/dialects/derived-skill";
 import { scopingForAgentDef } from "./agentdef/scoping";
 import { isAgentDefDir, loadAgentDefinitionFromDir } from "./agentdef/source";
 import { isComposedDir, loadComposedSkillFromDir } from "./composed/source";
-import { loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
+import { gatingForSkill, loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
 import { CollisionError } from "./errors";
 import type { SkmEnv } from "./env";
 import { assertNoTpromptStemCollisions } from "./tprompt/channel";
@@ -89,6 +89,13 @@ export function resolveDesiredState(
         };
         const scope = scopingForSkill(scoping, name);
         if (scope) desired.scoping = scope;
+        // Gated (user-invoked-only) skill (ADR 0011): source frontmatter declares
+        // `disable-model-invocation: true`. The overlay may opt no-gate agents in.
+        if (isGatedFrontmatter(fm)) {
+          desired.gated = true;
+          const gating = gatingForSkill(scoping, name);
+          if (gating) desired.gating = gating;
+        }
         // Optional `tprompt:` export block (ADR 0008); invalid blocks throw here.
         const tp = parseSkillTpromptBlock(fm, skillMd);
         if (tp.enabled) desired.tprompt = tp;
@@ -255,6 +262,11 @@ export function hashDesiredState(
     // refused when a block is added/removed/renamed; render-content edits are
     // caught by the apply-time hash re-check, like skills.
     tprompt: normalizeTpromptForHash(s.tprompt),
+    // Gated selection (ADR 0011): gatedness flips a skill from symlink to a rendered
+    // per-agent tree in different dirs, and the permissive set changes WHICH agents
+    // are placed — both must refuse a stale --plan. Added only for gated skills so a
+    // non-gated skill's canonical payload (and hash) is byte-identical to before.
+    ...(s.gated ? { gated: true, gating: normalizeGatingForHash(s.gating) } : {}),
   }));
   // Agent-def source-content edits are caught by the apply-time render-hash
   // re-check (like skills); the desired-state hash tracks only the stable
@@ -332,6 +344,16 @@ function checkFrontmatter(fm: unknown, name: string, warnings: Warning[]): void 
   }
 }
 
+/** True when SKILL.md frontmatter declares `disable-model-invocation: true` (ADR 0011). */
+function isGatedFrontmatter(fm: unknown): boolean {
+  return (
+    typeof fm === "object" &&
+    fm !== null &&
+    !Array.isArray(fm) &&
+    (fm as Record<string, unknown>)["disable-model-invocation"] === true
+  );
+}
+
 function parseFrontmatter(content: string): unknown {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
   if (!m) return undefined;
@@ -350,6 +372,12 @@ function frontmatterWarn(skill: string, message: string): Warning {
 function normalizeTpromptForHash(block?: { enabled: boolean; filename?: string }): unknown {
   if (!block || !block.enabled) return null;
   return { filename: block.filename ?? null };
+}
+
+/** Selection-relevant view of a gated skill's permissive set for the desired-state hash. */
+function normalizeGatingForHash(gating?: { permissive: string[] }): unknown {
+  if (!gating) return null;
+  return { permissive: [...gating.permissive].sort() };
 }
 
 function normalizeScopeForHash(scope?: AgentScope): unknown {
