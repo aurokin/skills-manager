@@ -268,7 +268,26 @@ function gatedPlacementLeaks(env: SkmEnv, registry: Registry, desired: DesiredSt
         continue;
       }
       const owner = ownerByDir.get(dirId);
-      if (!owner || gateHonored(registry.agents[owner]?.skillInvocation?.gate)) continue;
+      if (!owner) continue;
+      const gate = registry.agents[owner]?.skillInvocation?.gate;
+      if (gateHonored(gate)) {
+        // A companion-gated owner (codex) ignores the frontmatter — the gate only
+        // holds if the companion file itself sits next to SKILL.md and pins the
+        // flag. Catches unowned/state-lost trees that were never rendered by skm.
+        if (gate!.startsWith("companion:") && !companionEnforced(entry, gate!)) {
+          findings.push({
+            category: "gated-leak",
+            severity: "error",
+            skill: entry.name,
+            path: entry.path,
+            message:
+              `gated skill '${entry.name}' in companion-gated agent '${owner}' dir '${dirId}' is missing an ` +
+              `enforcing '${gate!.slice("companion:".length)}' (frontmatter alone is ignored there); re-apply with skm`,
+            fixable: false,
+          });
+        }
+        continue;
+      }
       if (permissiveByName.get(entry.name)?.has(owner)) continue; // explicit prose-gated opt-in
       findings.push({
         category: "gated-leak",
@@ -310,6 +329,27 @@ function gateVersionDrift(env: SkmEnv, config: MachineConfig, registry: Registry
     });
   }
   return findings;
+}
+
+/**
+ * True when a companion-gated entry actually carries its enforcing companion:
+ * the file named by the gate mechanism string exists in the skill dir and pins
+ * `policy.allow_implicit_invocation: false`. Missing/unparseable → not enforced.
+ */
+function companionEnforced(entry: ScanEntry, gate: string): boolean {
+  const dir =
+    entry.kind === "dir" ? entry.path : entry.kind === "symlink" ? entry.resolvedTarget : undefined;
+  if (!dir) return false;
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(fs.readFileSync(path.join(dir, gate.slice("companion:".length)), "utf8"));
+  } catch {
+    return false;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+  const policy = (parsed as Record<string, unknown>).policy;
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) return false;
+  return (policy as Record<string, unknown>).allow_implicit_invocation === false;
 }
 
 /** True when the entry's SKILL.md frontmatter declares `disable-model-invocation: true`. */

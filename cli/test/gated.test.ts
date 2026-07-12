@@ -955,6 +955,30 @@ describe("doctor gated findings", () => {
     expect(findings.some((x) => x.category === "gated-leak")).toBe(false);
   });
 
+  test("(b) a companion-gated agent's dir without the enforcing companion is flagged", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["codex"] });
+    // Frontmatter-only stray in codex's dir: codex ignores the frontmatter, so
+    // without agents/openai.yaml the skill is model-invocable there.
+    placeGatedDir(path.join(sandbox.home, ".codex/skills/fleet-update"));
+    const c = loadContext(sandbox.env);
+    const findings = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state);
+    const f = findings.find((x) => x.category === "gated-leak" && x.message.includes("agents/openai.yaml"));
+    expect(f?.severity).toBe("error");
+  });
+
+  test("(b) silent when the codex companion is present and enforcing", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["codex"] });
+    await runApply(sandbox.env, opts()); // skm's own render ships the companion
+    const c = loadContext(sandbox.env);
+    const findings = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(findings.some((x) => x.category === "gated-leak" && x.severity === "error")).toBe(false);
+  });
+
   test("(c) gate-version drift warns for an agent receiving gated skills", () => {
     sandbox = makeSandbox();
     const root = makeRoot(sandbox, "public");

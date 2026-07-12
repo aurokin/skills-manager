@@ -162,7 +162,13 @@ function renderOpenaiCompanion(skillName: string, existing?: Buffer): string {
   return `${emitYamlPyyaml(plainToDocument(merged))}\n`;
 }
 
-/** sha256 over an in-memory gated tree, byte-compatibly with render.ts's treeHashOf. */
+/**
+ * sha256 over an in-memory gated tree, byte-compatibly with render.ts's treeHashOf.
+ * Deliberately paths+bytes only, NOT file modes: treeHashOf's format is shared with
+ * composed trees and recorded in live state, so folding modes in would invalidate
+ * every deployed hash. A mode-only source change converges on the next content
+ * update; writeGatedTree re-applies source modes on every materialization.
+ */
 export function hashGatedTree(tree: GatedTree): string {
   const h = createHash("sha256");
   for (const rel of Object.keys(tree).sort()) {
