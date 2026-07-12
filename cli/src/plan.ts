@@ -661,7 +661,17 @@ function collectPrunes(
  * which re-verifies at write time).
  */
 function ownedUnmodifiedGatedTree(sp: StatePlacement, abs: string): boolean {
-  return sp.gated === true && sp.kind === "rendered" && sp.tree !== undefined && treeHashOf(abs) === sp.tree;
+  if (sp.gated !== true || sp.kind !== "rendered" || sp.tree === undefined) return false;
+  // A non-directory at the recorded path (e.g. the tree replaced by a regular file)
+  // is user content, not our render — and treeHashOf would throw traversing it.
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(abs);
+  } catch {
+    return false;
+  }
+  if (!stat.isDirectory()) return false;
+  return treeHashOf(abs) === sp.tree;
 }
 
 function describeForeign(env: SkmEnv, targetPath: string): string {

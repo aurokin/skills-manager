@@ -478,6 +478,26 @@ describe("gated ↔ ungated transitions", () => {
     expect(fs.readFileSync(path.join(claudeSkill, "SKILL.md"), "utf8")).toContain("user edit");
   });
 
+  test("gated → ungated with the tree replaced by a regular file: foreign, not a crash", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    // The user replaces the deployed gated tree with a plain file, then the gate drops.
+    const claudeSkill = path.join(sandbox.home, ".claude/skills/fleet-update");
+    fs.rmSync(claudeSkill, { recursive: true });
+    fs.writeFileSync(claudeSkill, "user file\n");
+    makeSkill(root.path, "fleet-update");
+
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state); // must not throw EISDIR/ENOTDIR
+    expect(plan.actions.some((a) => a.type === "create" && a.placement.path === claudeSkill)).toBe(false);
+    expect(plan.foreign.some((f) => f.path === claudeSkill)).toBe(true);
+    expect(fs.readFileSync(claudeSkill, "utf8")).toBe("user file\n");
+  });
+
   test("status reports the gated → ungated-with-override transition stale (plan/status parity)", async () => {
     sandbox = makeSandbox();
     const root = makeRoot(sandbox, "public");
@@ -766,6 +786,21 @@ describe("gated exposure", () => {
     expect(f?.message).toContain("opencode");
     expect(f?.message).toContain("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS");
     expect(f?.fixable).toBe(false);
+  });
+
+  test("doctor exposure is silent for a deleted gated placement (no false leak)", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    // The user deletes the deployed tree: nothing is exposed anymore; the missing
+    // placement is its own drift finding, not a leak.
+    fs.rmSync(path.join(sandbox.home, ".claude/skills/fleet-update"), { recursive: true });
+    const c = loadContext(sandbox.env);
+    const findings = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(findings.some((x) => x.category === "gated-leak" && x.severity === "warn")).toBe(false);
   });
 
   test("doctor exposure warn is silent when permissive covers the reader", async () => {

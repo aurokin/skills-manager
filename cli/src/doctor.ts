@@ -203,7 +203,17 @@ function gatedLiveExposure(
     if (artifact.type !== "skill") continue;
     for (const sp of artifact.placements) {
       if (!sp.gated) continue;
-      const dirId = dirByPath.get(path.resolve(path.dirname(expandTilde(env, sp.path))));
+      // A deleted/replaced placement is already a missing/drift finding; exposure
+      // is only real while the rendered tree actually sits on disk.
+      const abs = expandTilde(env, sp.path);
+      let isDir = false;
+      try {
+        isDir = fs.lstatSync(abs).isDirectory();
+      } catch {
+        /* missing → not exposed */
+      }
+      if (!isDir) continue;
+      const dirId = dirByPath.get(path.resolve(path.dirname(abs)));
       if (!dirId) continue;
       const permissive = permissiveByName.get(artifact.name) ?? new Set<string>();
       const exposed = gatedExposureOf(registry, dirId, sp.agent, permissive);
