@@ -226,7 +226,19 @@ describe("skillInvocation field validation", () => {
       probedVersion: "1.0.0",
       probedOn: "July 11, 2026",
     };
-    expect(() => validateRegistry(reg)).toThrow(/probedOn as YYYY-MM-DD/);
+    expect(() => validateRegistry(reg)).toThrow(/probedOn as a real YYYY-MM-DD date/);
+  });
+
+  test("rejects a well-formed but impossible calendar date", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "test",
+      probedVersion: "1.0.0",
+      probedOn: "2026-02-30",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/probedOn as a real YYYY-MM-DD date/);
   });
 
   test("a fully unknown entry must not declare probe fields", () => {

@@ -141,9 +141,18 @@ function validateSkillInvocation(agentId: string, agent: AgentCapability): void 
   if (typeof si.probedVersion !== "string" || si.probedVersion.trim() === "") {
     throw new RegistryError(`agent '${agentId}' skillInvocation requires probedVersion`);
   }
-  if (typeof si.probedOn !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(si.probedOn)) {
-    throw new RegistryError(`agent '${agentId}' skillInvocation requires probedOn as YYYY-MM-DD`);
+  if (typeof si.probedOn !== "string" || !isIsoDate(si.probedOn)) {
+    throw new RegistryError(
+      `agent '${agentId}' skillInvocation requires probedOn as a real YYYY-MM-DD date`,
+    );
   }
+}
+
+/** True iff `s` is a real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
+function isIsoDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 /**
