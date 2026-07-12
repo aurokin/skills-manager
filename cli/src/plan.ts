@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { agentDefFileHash, derivedSkillHash } from "./agentdef/artifact";
 import { loadContext } from "./context";
+import { gatedExposureRemedy } from "./gated";
 import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -98,6 +99,21 @@ export function buildPlan(
         kind: "deprecated-dir",
         skill: dp.skill,
         message: `'${dp.skill}' placed in deprecated dir '${p.dir}' (${p.path})`,
+      });
+    }
+
+    // Gated exposure (ADR 0011): the chosen dir has readers that do not enforce the
+    // gate and are not permissive-acknowledged, so the skill stays model-invocable
+    // through them. Advisory — the placement proceeds (a hard error would make
+    // claude-code unreachable for gated skills whenever opencode is enabled).
+    if (p.gated && p.gatedExposure && p.gatedExposure.length > 0) {
+      warnings.push({
+        kind: "gated-exposure",
+        skill: dp.skill,
+        message:
+          `gated skill '${dp.skill}' at ${p.path} is readable by no-gate agent(s) ` +
+          `${p.gatedExposure.join(", ")}, which ignore disable-model-invocation; ` +
+          gatedExposureRemedy(registry, p.gatedExposure),
       });
     }
 
@@ -212,6 +228,9 @@ export function planHashOf(
           // Gated marker: omitting it would let a reviewed --plan flip a gated tree
           // render (tree-hash bound) to a plain symlink/rendered skill, un-gating it.
           gated: a.placement.gated ?? null,
+          // Exposure set covered like bleed: a reviewed plan's advisory context must
+          // not be silently strippable while still passing integrity.
+          gatedExposure: a.placement.gatedExposure ?? null,
         },
         // Prune actions carry an empty source path → normalize to null.
         source: a.source

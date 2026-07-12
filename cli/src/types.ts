@@ -395,6 +395,15 @@ export interface Placement {
    * tree-hash binding; plan/status/doctor route it through the tree-hash arm.
    */
   gated?: boolean;
+  /**
+   * Readers of this gated placement's dir (reads OR maybeReads) that do NOT enforce
+   * the gate (none/unknown/absent) and are not permissive-acknowledged — the skill
+   * stays model-invocable through them (e.g. opencode reading the claude dir).
+   * Advisory, never a hard error (that would make claude-code unreachable for gated
+   * skills whenever opencode is enabled): plan warns, doctor warns. Present only
+   * when non-empty; gated placements only.
+   */
+  gatedExposure?: string[];
 }
 
 /** Output of the read-graph solver for one scoped skill. */
@@ -439,7 +448,10 @@ export type WarningKind =
   | "unused-provider"
   // A path owned in state by one artifact key but desired under another (AUR-646):
   // the plan refuses the placement rather than write over or zombie-own it.
-  | "ownership-handoff";
+  | "ownership-handoff"
+  // A gated placement's dir has readers that do not enforce the gate and are not
+  // permissive-acknowledged (ADR 0011); advisory, placement still proceeds.
+  | "gated-exposure";
 
 export interface Warning {
   kind: WarningKind;

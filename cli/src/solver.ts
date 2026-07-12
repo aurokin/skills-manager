@@ -7,7 +7,7 @@
 
 import * as path from "node:path";
 import { GatingError } from "./errors";
-import { gateHonored } from "./gated";
+import { gatedExposureOf, gateHonored } from "./gated";
 import { enabledAgents, readersOf } from "./registry";
 import type {
   DesiredSkill,
@@ -194,6 +194,12 @@ function solveGated(skill: DesiredSkill, registry: Registry, enabled: string[]):
     const placement = makePlacement(registry, skill, agent, dir, placedAgents);
     placement.kind = "rendered"; // gated placements are always rendered trees, never symlinks
     placement.gated = true;
+    // Gated exposure: readers of the chosen dir that do NOT enforce the gate and are
+    // not permissive-acknowledged (e.g. opencode reading the claude dir). Advisory —
+    // plan warns, doctor warns — never a hard error (that would make claude-code
+    // unreachable for gated skills whenever opencode is enabled).
+    const exposure = gatedExposureOf(registry, dir, agent, permissive);
+    if (exposure.length > 0) placement.gatedExposure = exposure;
     return placement;
   });
   return { skill: skill.name, placements, unreachable };

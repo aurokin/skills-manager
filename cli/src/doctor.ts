@@ -8,7 +8,7 @@ import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { loadContext, registryPath } from "./context";
 import { type SkmEnv, expandTilde } from "./env";
-import { gateHonored } from "./gated";
+import { gatedExposureOf, gatedExposureRemedy, gateHonored } from "./gated";
 import { loadMachineConfig } from "./machine-config";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -167,10 +167,60 @@ export function diagnose(
   //    gate exists to prevent.
   findings.push(...gatedPlacementLeaks(env, registry, desired));
 
+  // 7b. Gated-exposure advisory: a LIVE gated placement whose dir currently has
+  //     readers that do not enforce the gate and are not permissive-acknowledged.
+  //     Warn-level — the placement itself is correct (the target's gate holds); the
+  //     exposure is through incidental readers (e.g. opencode reading the claude dir).
+  findings.push(...gatedLiveExposure(env, registry, desired, state));
+
   // 8. Gate-version drift (ADR 0011, finding c): the installed CLI drifted from the
   //    probed gate version for an agent actually receiving gated skills.
   findings.push(...gateVersionDrift(env, config, registry, desired));
 
+  return findings;
+}
+
+/**
+ * Warn for each state-owned gated placement whose dir has an uncovered no-gate
+ * reader (gatedExposureOf against the CURRENT registry, so a registry edit adding a
+ * reader after apply is caught). Permissive-acknowledged agents are covered; readers
+ * that honor the gate enforce the frontmatter themselves and are never exposure.
+ */
+function gatedLiveExposure(
+  env: SkmEnv,
+  registry: Registry,
+  desired: DesiredState,
+  state: StateFile,
+): Finding[] {
+  const permissiveByName = new Map<string, Set<string>>();
+  for (const s of desired.skills) {
+    if (s.gated) permissiveByName.set(s.name, new Set(s.gating?.permissive ?? []));
+  }
+  const dirByPath = registryDirByPath(env, registry);
+
+  const findings: Finding[] = [];
+  for (const artifact of Object.values(state.artifacts)) {
+    if (artifact.type !== "skill") continue;
+    for (const sp of artifact.placements) {
+      if (!sp.gated) continue;
+      const dirId = dirByPath.get(path.resolve(path.dirname(expandTilde(env, sp.path))));
+      if (!dirId) continue;
+      const permissive = permissiveByName.get(artifact.name) ?? new Set<string>();
+      const exposed = gatedExposureOf(registry, dirId, sp.agent, permissive);
+      if (exposed.length === 0) continue;
+      findings.push({
+        category: "gated-leak",
+        severity: "warn",
+        skill: artifact.name,
+        path: sp.path,
+        message:
+          `gated skill '${artifact.name}' in dir '${dirId}' is readable by no-gate agent(s) ` +
+          `${exposed.join(", ")}, which ignore disable-model-invocation; ` +
+          gatedExposureRemedy(registry, exposed),
+        fixable: false,
+      });
+    }
+  }
   return findings;
 }
 

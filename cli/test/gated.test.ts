@@ -493,7 +493,97 @@ describe("gated state recording (adopt / no-op)", () => {
     }
     const c = loadContext(sandbox.env);
     expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
-    expect(diagnose(sandbox.env, c.config, c.registry, c.desired, c.state).filter((f) => f.severity !== "info")).toEqual([]);
+    // The only actionable finding is the advisory opencode exposure on the claude
+    // placement (opencode reads the claude dir and ignores the gate) — no drift.
+    const actionable = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state).filter((f) => f.severity !== "info");
+    expect(actionable.length).toBeGreaterThan(0);
+    expect(actionable.every((f) => f.category === "gated-leak" && f.severity === "warn")).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gated exposure: no-gate readers of a chosen dir (advisory, never a hard error)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("gated exposure", () => {
+  test("claude placement records opencode exposure; honored readers (cursor/grok) excluded", () => {
+    const r = solvePlacements(gatedDesired("fleet-update"), ALL_ENABLED, reg());
+    const claude = r.placements.find((p) => p.dir === "claude")!;
+    // opencode (gate none) reads the claude dir → exposure; cursor (hard read) and
+    // grok (maybe-read) both honor the frontmatter gate themselves → not exposure.
+    expect(claude.gatedExposure).toEqual(["opencode"]);
+    // cursor reads the codex dir but honors the gate → no exposure there.
+    const codex = r.placements.find((p) => p.dir === "codex")!;
+    expect(codex.gatedExposure).toBeUndefined();
+  });
+
+  test("a permissive listing is an acknowledgment, not exposure", () => {
+    const r = solvePlacements(gatedDesired("fleet-update", { permissive: ["opencode"] }), ALL_ENABLED, reg());
+    const claude = r.placements.find((p) => p.dir === "claude")!;
+    expect(claude.gatedExposure).toBeUndefined();
+  });
+
+  test("plan warns about the opencode exposure, naming kill switches and permissive", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    const w = plan.warnings.find((x) => x.kind === "gated-exposure");
+    expect(w?.skill).toBe("fleet-update");
+    expect(w?.message).toContain("opencode");
+    expect(w?.message).toContain("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS");
+    expect(w?.message).toContain("prose gate");
+    expect(w?.message).toContain("gating.permissive");
+  });
+
+  test("plan exposure warning is silenced by a permissive acknowledgment", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "private", "private");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    fs.writeFileSync(
+      overlayPath(root),
+      JSON.stringify({ version: 1, name: "o", skills: { "fleet-update": { gating: { permissive: ["opencode"] } } } }),
+    );
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code", "opencode"] });
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(plan.warnings.some((x) => x.kind === "gated-exposure")).toBe(false);
+    // opencode itself is opted in and placed in its own dir.
+    expect(plan.actions.some((a) => a.placement.agent === "opencode" && a.placement.gated)).toBe(true);
+  });
+
+  test("doctor warns for a live gated placement with an uncovered no-gate reader", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    const c = loadContext(sandbox.env);
+    const f = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state)
+      .find((x) => x.category === "gated-leak" && x.severity === "warn");
+    expect(f?.skill).toBe("fleet-update");
+    expect(f?.message).toContain("opencode");
+    expect(f?.message).toContain("OPENCODE_DISABLE_CLAUDE_CODE_SKILLS");
+    expect(f?.fixable).toBe(false);
+  });
+
+  test("doctor exposure warn is silent when permissive covers the reader", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "private", "private");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    fs.writeFileSync(
+      overlayPath(root),
+      JSON.stringify({ version: 1, name: "o", skills: { "fleet-update": { gating: { permissive: ["opencode"] } } } }),
+    );
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    const c = loadContext(sandbox.env);
+    const findings = diagnose(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(findings.some((x) => x.category === "gated-leak" && x.severity === "warn")).toBe(false);
   });
 });
 

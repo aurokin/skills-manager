@@ -17,6 +17,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { GatingError } from "./errors";
+import { readersOf } from "./registry";
 import { plainToDocument, renderedSkillMd } from "./render";
 import { emitYamlPyyaml } from "./render/emit-yaml-pyyaml";
 import type { DesiredSkill, Registry, SkillGate } from "./types";
@@ -27,6 +28,42 @@ export type GatedTree = Record<string, Buffer>;
 /** True for a gate skm can actually enforce (not none/unknown/absent). */
 export function gateHonored(gate: SkillGate | undefined): boolean {
   return gate !== undefined && gate !== "none" && gate !== "unknown";
+}
+
+/**
+ * Gated-exposure set for one placement dir: agents (≠ the target) that read OR
+ * maybe-read `dirId`, whose gate is none/unknown/absent (they would model-invoke the
+ * skill), and that are not permissive-acknowledged (a `gating.permissive` listing IS
+ * the user accepting that agent seeing the skill). Readers that honor the gate (e.g.
+ * cursor reading the claude dir) enforce the frontmatter themselves — not exposure.
+ * Advisory by design: never a hard error, or claude-code would be unreachable for
+ * gated skills whenever opencode is enabled. Shared by the solver (desired
+ * placements) and doctor (live state placements).
+ */
+export function gatedExposureOf(
+  registry: Registry,
+  dirId: string,
+  target: string,
+  permissive: Set<string>,
+): string[] {
+  return readersOf(registry, dirId, { includeMaybe: true })
+    .filter((r) => r !== target)
+    .filter((r) => !gateHonored(registry.agents[r]?.skillInvocation?.gate))
+    .filter((r) => !permissive.has(r))
+    .sort();
+}
+
+/**
+ * Mitigation clause for a gated-exposure message: per-agent kill switches where the
+ * registry knows them (opencode: OPENCODE_DISABLE_CLAUDE_CODE_SKILLS /
+ * OPENCODE_DISABLE_EXTERNAL_SKILLS), the skill's prose gate, or a permissive
+ * acknowledgment. Shared by the plan warning and the doctor finding.
+ */
+export function gatedExposureRemedy(registry: Registry, exposed: string[]): string {
+  const switches = exposed
+    .filter((id) => (registry.agents[id]?.killSwitches?.length ?? 0) > 0)
+    .map((id) => `set ${registry.agents[id]!.killSwitches!.join(" / ")} to hide it from ${id}`);
+  return [...switches, "rely on the skill's prose gate", "or add the agent(s) to gating.permissive to acknowledge the exposure"].join("; ");
 }
 
 // First-party dirs whose SKILL.md gets a per-agent frontmatter merge when the skill

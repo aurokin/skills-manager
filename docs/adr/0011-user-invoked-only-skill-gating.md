@@ -104,8 +104,17 @@ This ADR fixes the semantics; ADR-level rules the implementation must
 honor:
 
 1. **Shared roots are forbidden for gated skills.** A gated skill never
-   places into `~/.agents/skills` (or any directory read by more than
-   its target agent without a gate) — solver hard error, not a warning.
+   places into `~/.agents/skills` — solver hard error, not a warning.
+   Incidental no-gate readers of a *private* ownDir (e.g. opencode
+   reading `~/.claude/skills`) are NOT a hard error — that would make
+   claude-code unreachable for gated skills whenever opencode is
+   enabled. They are surfaced as a loud gated-exposure warning in plan
+   and a doctor finding, with three acknowledgment paths: the reader's
+   kill switches (opencode's `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS`),
+   the skill's prose gate, or listing the reader in the permissive
+   override (which silences the warning — explicit acceptance).
+   Readers that themselves honor the frontmatter gate (cursor) are not
+   exposure.
 2. **Per-agent translation**: frontmatter passthrough for
    frontmatter-gate agents; companion-file emission for codex; agents
    whose gate is `none`/`unknown` are excluded from placement entirely.
@@ -138,6 +147,11 @@ for any other vendor.
 - Agents without an enforceable gate silently don't get the skill
   unless explicitly opted in — the safe default costs coverage, and the
   permissive override is the pressure valve.
+- The user-invoked-only guarantee is per-agent best-effort, not
+  absolute: a no-gate agent that reads another agent's private dir can
+  still see the skill ungated. skm cannot close that hole without
+  refusing the placement entirely, so it warns loudly instead and
+  leaves the acknowledgment to the user.
 - The registry gains its third probed-capability block (reads,
   agentDef, skillInvocation); validation keeps entries honest
   (enums, evidence, probe pinning) before any code consumes them.
