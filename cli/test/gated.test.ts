@@ -182,6 +182,40 @@ describe("companion (agents/openai.yaml) emission", () => {
     expect(tree["agents/openai.yaml"]!.toString("utf8")).toBe(golden);
   });
 
+  test("frontmatter override that omits the flag keeps disable-model-invocation in rendered bytes", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    const src = makeSkill(root.path, "fleet-update", {
+      frontmatter: { "disable-model-invocation": true },
+      agentsYaml: { claude: { model: "opus" } },
+    });
+    const skill: DesiredSkill = {
+      name: "fleet-update",
+      source: { root: "public", visibility: "public", path: src },
+      overrides: { claude: path.join(src, "agents", "claude.yaml") },
+      gated: true,
+    };
+    const rendered = renderGatedTree(skill, "claude-code", "claude", reg())["SKILL.md"]!.toString("utf8");
+    expect(rendered).toContain("disable-model-invocation: true");
+    expect(rendered).toContain("model: opus"); // the merge still applied
+  });
+
+  test("frontmatter override setting disable-model-invocation: false is a hard error", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    const src = makeSkill(root.path, "fleet-update", {
+      frontmatter: { "disable-model-invocation": true },
+      agentsYaml: { claude: { "disable-model-invocation": false } },
+    });
+    const skill: DesiredSkill = {
+      name: "fleet-update",
+      source: { root: "public", visibility: "public", path: src },
+      overrides: { claude: path.join(src, "agents", "claude.yaml") },
+      gated: true,
+    };
+    expect(() => renderGatedTree(skill, "claude-code", "claude", reg())).toThrow(GatingError);
+  });
+
   test("author openai.yaml with allow_implicit_invocation: true is a hard error", () => {
     sandbox = makeSandbox();
     const root = makeRoot(sandbox, "public");
@@ -299,6 +333,167 @@ describe("apply + drift", () => {
     const c = loadContext(sandbox.env);
     const drift = computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state);
     expect(drift.some((d) => d.drift === "modified")).toBe(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gated ↔ ungated transitions (state records tree hashes; the desired side flips)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("gated ↔ ungated transitions", () => {
+  test("gated → ungated converges: owned gated trees become symlinks, own-dir extras prune", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code", "codex"] });
+    await runApply(sandbox.env, opts());
+
+    // Author removes the gate: rewrite the source SKILL.md without the flag.
+    const src = makeSkill(root.path, "fleet-update");
+    await runApply(sandbox.env, opts({ prune: true }));
+
+    // The claude own-dir gated tree was replaced by a plain symlink to source...
+    const claudeSkill = path.join(sandbox.home, ".claude/skills/fleet-update");
+    expect(fs.lstatSync(claudeSkill).isSymbolicLink()).toBe(true);
+    expect(fs.realpathSync(claudeSkill)).toBe(fs.realpathSync(src));
+    // ...the shared symlink was created, and the codex own-dir tree was pruned.
+    expect(fs.lstatSync(path.join(sandbox.home, ".agents/skills/fleet-update")).isSymbolicLink()).toBe(true);
+    expect(fs.existsSync(path.join(sandbox.home, ".codex/skills/fleet-update"))).toBe(false);
+
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(plan.actions.every((a) => a.type === "noop")).toBe(true);
+    expect(plan.foreign).toEqual([]);
+    expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
+  });
+
+  test("gated → ungated with a claude override converges to an ungated render (no false hand-edit)", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", {
+      frontmatter: { "disable-model-invocation": true },
+      agentsYaml: { claude: { model: "opus" } },
+    });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    // Remove the gate; keep the override → desired claude placement stays rendered.
+    makeSkill(root.path, "fleet-update", { agentsYaml: { claude: { model: "opus" } } });
+    const mid = loadContext(sandbox.env);
+    const midPlan = buildPlan(sandbox.env, mid.config, mid.registry, mid.desired, mid.state);
+    // Must be an update, not a "hand-edited" warning stranding the old gated tree.
+    expect(midPlan.warnings.some((w) => w.kind === "modified")).toBe(false);
+    expect(midPlan.actions.some((a) => a.type === "update")).toBe(true);
+
+    await runApply(sandbox.env, opts({ prune: true }));
+    const skillMd = fs.readFileSync(path.join(sandbox.home, ".claude/skills/fleet-update/SKILL.md"), "utf8");
+    expect(skillMd).not.toContain("disable-model-invocation");
+    expect(skillMd).toContain("model: opus");
+
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(plan.actions.every((a) => a.type === "noop")).toBe(true);
+    expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
+    // The gated marker was cleared from state.
+    expect(loadState(sandbox.env).artifacts["skill:fleet-update"]!.placements.some((p) => p.gated)).toBe(false);
+  });
+
+  test("gated → ungated leaves a genuinely hand-edited gated tree untouched (warn, not clobber)", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sandbox.env, opts());
+
+    // Hand-edit the deployed gated tree, THEN remove the gate from the source.
+    fs.appendFileSync(path.join(sandbox.home, ".claude/skills/fleet-update/SKILL.md"), "\nuser edit\n");
+    makeSkill(root.path, "fleet-update");
+
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    // Diverged tree → the claude path is never replaced by the symlink repair (the
+    // shared-dir create is unrelated); it stays reported as foreign.
+    const claudeSkill = path.join(sandbox.home, ".claude/skills/fleet-update");
+    expect(plan.actions.some((a) => a.type === "create" && a.placement.path === claudeSkill)).toBe(false);
+    expect(plan.foreign.some((f) => f.path === claudeSkill && f.detail.includes("owned symlink replaced by dir"))).toBe(true);
+    expect(fs.readFileSync(path.join(claudeSkill, "SKILL.md"), "utf8")).toContain("user edit");
+  });
+
+  test("ungated → gated converges: owned symlinks become gated trees, shared prunes", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update");
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code", "codex"] });
+    await runApply(sandbox.env, opts());
+    expect(fs.lstatSync(path.join(sandbox.home, ".claude/skills/fleet-update")).isSymbolicLink()).toBe(true);
+
+    // Author gates the skill.
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    await runApply(sandbox.env, opts({ prune: true }));
+
+    const claudeSkill = path.join(sandbox.home, ".claude/skills/fleet-update");
+    expect(fs.lstatSync(claudeSkill).isSymbolicLink()).toBe(false); // real rendered dir now
+    expect(fs.readFileSync(path.join(claudeSkill, "SKILL.md"), "utf8")).toContain("disable-model-invocation: true");
+    expect(fs.existsSync(path.join(sandbox.home, ".codex/skills/fleet-update/agents/openai.yaml"))).toBe(true);
+    expect(fs.existsSync(path.join(sandbox.home, ".agents/skills/fleet-update"))).toBe(false); // shared pruned
+
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    expect(plan.actions.every((a) => a.type === "noop")).toBe(true);
+    expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// State recording: adopt + repeated no-op applies keep the tree baseline
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("gated state recording (adopt / no-op)", () => {
+  test("adopting a pre-existing matching gated tree records the full-tree hash; status stays clean", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    const src = makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["codex"] });
+
+    // Pre-place the exact tree skm would render (unowned), so plan adopts it.
+    const skill: DesiredSkill = {
+      name: "fleet-update",
+      source: { root: "public", visibility: "public", path: src },
+      overrides: {},
+      gated: true,
+    };
+    const target = path.join(sandbox.home, ".codex/skills/fleet-update");
+    writeGatedTree(renderGatedTree(skill, "codex", "codex", reg()), target);
+
+    const pre = loadContext(sandbox.env);
+    const prePlan = buildPlan(sandbox.env, pre.config, pre.registry, pre.desired, pre.state);
+    expect(prePlan.actions.map((a) => a.type)).toEqual(["adopt"]);
+
+    await runApply(sandbox.env, opts());
+    const sp = loadState(sandbox.env).artifacts["skill:fleet-update"]!.placements[0]!;
+    expect(sp.gated).toBe(true);
+    expect(sp.tree).toBe(treeHashOf(target)!); // full-tree baseline recorded on adopt
+
+    const c = loadContext(sandbox.env);
+    expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
+    expect(diagnose(sandbox.env, c.config, c.registry, c.desired, c.state).filter((f) => f.severity !== "info")).toEqual([]);
+  });
+
+  test("apply → no-op re-apply keeps the tree baseline; status and doctor stay clean", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code", "codex"] });
+    await runApply(sandbox.env, opts());
+    await runApply(sandbox.env, opts()); // pure no-op pass
+
+    for (const sp of loadState(sandbox.env).artifacts["skill:fleet-update"]!.placements) {
+      expect(sp.gated).toBe(true);
+      expect(sp.tree?.startsWith("sha256:")).toBe(true);
+    }
+    const c = loadContext(sandbox.env);
+    expect(computeDrift(sandbox.env, c.config, c.registry, c.desired, c.state)).toEqual([]);
+    expect(diagnose(sandbox.env, c.config, c.registry, c.desired, c.state).filter((f) => f.severity !== "info")).toEqual([]);
   });
 });
 

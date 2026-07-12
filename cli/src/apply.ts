@@ -157,6 +157,9 @@ function recordPlacement(state: StateFile, action: PlannedAction): void {
   // Adopting a pre-existing rendered dir: capture its current full-tree hash as the
   // owned baseline so later deletion safety covers the whole tree (finding 2). A
   // rendered-file (agent-def) is covered by its content hash, not a tree.
+  // Gated placements are kind "rendered", so this arm records their tree baseline
+  // too (adopt included); noops never reach recordPlacement, so the create-time
+  // record persists. Regression-pinned in gated.test.ts (adopt/no-op status clean).
   const tree = p.kind === "rendered" ? treeHashOf(abs) : undefined;
   upsertPlacement(
     state,

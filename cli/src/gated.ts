@@ -53,8 +53,14 @@ export function renderGatedTree(skill: DesiredSkill, agentId: string, dir: strin
   const dialect = FIRST_PARTY_DIR_DIALECT[dir];
   const overridePath = dialect ? skill.overrides[dialect] : undefined;
   if (dialect && overridePath) {
-    // Same per-agent frontmatter merge a rendered native placement gets; the source's
-    // disable-model-invocation survives the merge unless the override drops it.
+    // Same per-agent frontmatter merge a rendered native placement gets — but the
+    // merge must never un-gate the skill (the frontmatter IS the gate here). Mirror
+    // the companion rule: an override that explicitly sets disable-model-invocation
+    // to anything but true contradicts the gated intent → hard error. With every
+    // non-true value rejected, deepMerge preserves the source's
+    // `disable-model-invocation: true` (base keys the override omits survive, and an
+    // equal `true` is a no-op) — the rendered frontmatter always keeps the gate.
+    assertOverrideKeepsGate(skill.name, overridePath, dialect);
     tree["SKILL.md"] = Buffer.from(renderedSkillMd(skill, dialect), "utf8");
   }
 
@@ -65,6 +71,25 @@ export function renderGatedTree(skill: DesiredSkill, agentId: string, dir: strin
     tree["agents/openai.yaml"] = Buffer.from(renderOpenaiCompanion(skill.name, tree["agents/openai.yaml"]), "utf8");
   }
   return tree;
+}
+
+/**
+ * Reject a per-agent frontmatter override that would un-gate a gated skill's
+ * frontmatter-enforced placement: `disable-model-invocation` set to any value but
+ * `true` (false, null, a string, ...) is conflicting intent, like an author companion
+ * with allow_implicit_invocation: true. Omitting the key is fine — deepMerge keeps
+ * the source's `true`.
+ */
+function assertOverrideKeepsGate(skillName: string, overridePath: string, dialect: string): void {
+  const parsed = parseYaml(fs.readFileSync(overridePath, "utf8"));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+  const flag = (parsed as Record<string, unknown>)["disable-model-invocation"];
+  if (flag !== undefined && flag !== true) {
+    throw new GatingError(
+      `gated skill '${skillName}' has an agents/${dialect}.yaml override setting disable-model-invocation to ` +
+        `${JSON.stringify(flag)}, contradicting its gated intent; remove the key (the source's 'true' is preserved)`,
+    );
+  }
 }
 
 /**

@@ -30,6 +30,7 @@ import type {
   PlannedAction,
   Registry,
   StateFile,
+  StatePlacement,
   VerbOptions,
   VerbOutcome,
   Warning,
@@ -295,6 +296,13 @@ function diffSymlink(
       if (entry.kind === "symlink") {
         // Our owned symlink was re-pointed; unlinking a link loses no content → repair.
         actions.push(baseAction(dp, "create", { ...p }));
+      } else if (ownedUnmodifiedGatedTree(owner.placement, p.path)) {
+        // Gated→ungated transition (ADR 0011): the source dropped
+        // disable-model-invocation, so a symlink is now desired where skm's OWN
+        // unmodified gated tree sits (state records gated + a matching full-tree
+        // hash). Replacing skm's render loses nothing → repair; classifyRemoval
+        // re-verifies the tree at write time.
+        actions.push(baseAction(dp, "create", { ...p }));
       } else {
         // A real dir/file replaced our symlink → user content. Never clobber (DEL-1).
         foreign.push({
@@ -343,7 +351,22 @@ function diffRendered(
   if (entry.kind === "dir") {
     const diskHash = entry.sha256OfSkillMd;
     if (owner) {
-      if (diskHash === owner.placement.hash) {
+      if (owner.placement.gated) {
+        // Gated→ungated transition (ADR 0011): the state placement was recorded gated
+        // (its hash is a FULL-TREE hash), but the desired render no longer is (else
+        // diffTreeRendered would have run) — so the SKILL.md-sha compare below would
+        // false-positive as hand-edited. skm's own unmodified tree → update (re-render
+        // ungated); a genuinely diverged tree keeps the hand-edit warning.
+        if (ownedUnmodifiedGatedTree(owner.placement, p.path)) {
+          actions.push(baseAction(dp, "update", rendered));
+        } else {
+          warnings.push({
+            kind: "modified",
+            skill: dp.skill,
+            message: `gated skill '${dp.skill}' at ${p.path} was hand-edited; not overwritten (remove it and re-apply to restore skm's render)`,
+          });
+        }
+      } else if (diskHash === owner.placement.hash) {
         actions.push(baseAction(dp, owner.placement.hash === expectedHash ? "noop" : "update", rendered));
       } else {
         // Native rendered skills are repaired by `doctor --fix`; a derived skill is
@@ -573,6 +596,17 @@ function collectPrunes(
     }
   }
   return requiresPrune;
+}
+
+/**
+ * True when what sits at `abs` is skm's OWN unmodified gated render: the state
+ * placement was recorded gated with a full-tree hash, and the on-disk tree still
+ * hashes to it. Such a dir is safe to replace on a gated→ungated transition — it
+ * contains nothing skm did not write (mirrors classifyRemoval's rendered-dir rule,
+ * which re-verifies at write time).
+ */
+function ownedUnmodifiedGatedTree(sp: StatePlacement, abs: string): boolean {
+  return sp.gated === true && sp.kind === "rendered" && sp.tree !== undefined && treeHashOf(abs) === sp.tree;
 }
 
 function describeForeign(env: SkmEnv, targetPath: string): string {
