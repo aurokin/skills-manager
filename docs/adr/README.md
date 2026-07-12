@@ -16,6 +16,7 @@ design and the research behind these).
 | [0008](0008-tprompt-export.md) | tprompt export as a generic prompt-export channel for agents and skills | accepted |
 | [0009](0009-dialect-document-emitter-rendering.md) | Rendering is dialect → document AST → emitter; byte quirks live only in emitters | accepted |
 | [0010](0010-composed-skills-artifact-type.md) | Composed skills: per-consumer rendered skills with a build matrix and posture | accepted |
+| [0011](0011-user-invoked-only-skill-gating.md) | User-invoked-only skills: intent declared once, gate translated per agent | accepted |
 
 Convention: new ADRs take the next number, one decision per file, statuses
 `proposed → accepted → superseded by NNNN`.

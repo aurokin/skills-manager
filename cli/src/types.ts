@@ -30,6 +30,29 @@ export type AgentDefSupport = "supported" | "none" | "unknown";
 /** File format/flavor of an agent-definition directory (per-harness field sets differ). */
 export type AgentDefDialect = "claude" | "codex" | "copilot" | "cursor" | "opencode" | "gemini";
 
+/** How the user can still trigger a skill once model invocation is gated off. */
+export type SkillUserInvocation = "slash" | "mention" | "none" | "unknown";
+
+/**
+ * The mechanism (if any) an agent enforces `disable-model-invocation` with.
+ * `companion:<relpath>` names a per-skill companion file (codex:
+ * agents/openai.yaml); `unknown` is treated as `none` for guarantees.
+ */
+export type SkillGate = "frontmatter" | "companion:agents/openai.yaml" | "none" | "unknown";
+
+/** Probed skill-invocation capability (ADR 0011). Parse/validate only until gated placement lands. */
+export interface SkillInvocation {
+  userInvocation: SkillUserInvocation;
+  gate: SkillGate;
+  /** Evidence citation, always required. */
+  evidence: string;
+  /** CLI version the probe ran against. Required unless fully unknown. */
+  probedVersion?: string;
+  /** Probe date (YYYY-MM-DD). Required unless fully unknown. */
+  probedOn?: string;
+  note?: string;
+}
+
 /** A global skill directory the registry knows about (keyed by dir id). */
 export interface Directory {
   /** May contain a leading `~`; resolve with dirPath()/expandTilde(). */
@@ -67,6 +90,9 @@ export interface AgentCapability {
   agentDefDialect?: AgentDefDialect;
   /** Evidence citation for the agent-definition support decision. */
   agentDefEvidence?: string;
+  // ── Skill-invocation gating capability (ADR 0011). ──
+  // Parse/validate only; gated placement consumes it in a later phase.
+  skillInvocation?: SkillInvocation;
 }
 
 export interface Registry {
