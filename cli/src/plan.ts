@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { agentDefFileHash, derivedSkillHash } from "./agentdef/artifact";
 import { loadContext } from "./context";
-import { gatedExposureRemedy } from "./gated";
+import { gateHonored, gatedExposureRemedy } from "./gated";
 import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements, dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
@@ -171,7 +171,7 @@ export function buildPlan(
   // placements (e.g. the old shared-root symlink after an ungated→gated transition)
   // become required removals, not optional prunes — see collectPrunes.
   const gatedSkillNames = new Set(desired.skills.filter((s) => s.gated).map((s) => s.name));
-  const requiresPrune = collectPrunes(env, desiredPaths, state, actions, solved.tprompt.available, gatedSkillNames);
+  const requiresPrune = collectPrunes(env, registry, desiredPaths, state, actions, solved.tprompt.available, gatedSkillNames);
   const planHash = planHashOf(desired.hash, actions, requiresPrune);
 
   return {
@@ -600,21 +600,23 @@ function diffTpromptFile(
 /**
  * State-owned placements no longer desired become prune actions (hermes exempt).
  *
- * Gated exception (ADR 0011): a stale UNGATED placement of a skill that is gated
- * in the CURRENT desired state (e.g. the old shared-root symlink after an
- * ungated→gated transition) is a required removal, not an optional cleanup —
- * leaving it behind keeps the skill model-invocable through the very dirs the
- * gate forbids. Such actions carry reason "gated-transition" and executePlan runs
- * them WITHOUT --prune (they do not set requiresPrune). A stale placement that is
- * itself a gated render (sp.gated — e.g. an own-dir tree orphaned by narrowing
- * scope or disabling the agent) still enforces its gate wherever it sits, so it
- * stays an ordinary --prune-gated cleanup. The deletion invariant is unchanged:
- * only state-owned paths, still gated by classifyRemoval at execute time. Hermes
- * stays add-only exempt even here (the invariant wins); doctor's gated-leak scan
- * flags any leftover there.
+ * Gated exception (ADR 0011): a stale placement of a skill that is gated in the
+ * CURRENT desired state is a required removal, not an optional cleanup, unless
+ * the placement's agent itself enforces the gate. `sp.gated` records how the
+ * tree was RENDERED, not whether it is enforced where it sits — a permissive
+ * placement whose opt-in was revoked (or whose agent's registry gate flipped to
+ * none) is still model-invocable and must go. So: an old shared-root symlink, a
+ * pre-gate render, or a gated tree in a no-gate agent's dir → required (reason
+ * "gated-transition", executePlan runs them WITHOUT --prune, no requiresPrune);
+ * a gated tree in a gate-honoring agent's dir (e.g. orphaned by narrowing scope)
+ * still enforces its gate → ordinary --prune cleanup. The deletion invariant is
+ * unchanged: only state-owned paths, still gated by classifyRemoval at execute
+ * time. Hermes stays add-only exempt even here (the invariant wins); doctor's
+ * gated-leak scan flags any leftover there.
  */
 function collectPrunes(
   env: SkmEnv,
+  registry: Registry,
   desiredPaths: Set<string>,
   state: StateFile,
   actions: PlannedAction[],
@@ -644,10 +646,12 @@ function collectPrunes(
       };
       // tprompt exports are a prompt channel, not a model-invocable skill placement —
       // no exposure, so they keep the ordinary --prune opt-in.
+      const enforcedInPlace =
+        sp.gated === true && gateHonored(registry.agents[sp.agent]?.skillInvocation?.gate);
       const required =
         artifact.type === "skill" &&
         gatedSkillNames.has(artifact.name) &&
-        sp.gated !== true &&
+        !enforcedInPlace &&
         sp.agent !== "tprompt";
       actions.push({
         type: "prune",

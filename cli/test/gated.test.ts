@@ -500,6 +500,33 @@ describe("gated ↔ ungated transitions", () => {
     expect(fs.existsSync(path.join(sandbox.home, ".codex/skills/fleet-update"))).toBe(false);
   });
 
+  test("revoking a permissive opt-in removes the no-gate placement without --prune", async () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "private", "private");
+    makeSkill(root.path, "fleet-update", { frontmatter: { "disable-model-invocation": true } });
+    fs.writeFileSync(
+      overlayPath(root),
+      JSON.stringify({ version: 1, name: "o", skills: { "fleet-update": { gating: { permissive: ["gemini-cli"] } } } }),
+    );
+    writeMachineConfig(sandbox, { version: 1, roots: [root], agents: ["claude-code", "gemini-cli"] });
+    await runApply(sandbox.env, opts());
+    const geminiSkill = path.join(sandbox.home, ".gemini/skills/fleet-update");
+    expect(fs.existsSync(geminiSkill)).toBe(true);
+
+    // Revoke the opt-in: gemini cannot enforce the gate, so the tree is
+    // model-invocable there — a required removal, not an optional prune.
+    fs.writeFileSync(overlayPath(root), JSON.stringify({ version: 1, name: "o", skills: {} }));
+    const c = loadContext(sandbox.env);
+    const plan = buildPlan(sandbox.env, c.config, c.registry, c.desired, c.state);
+    const geminiPrune = plan.actions.find((a) => a.type === "prune" && a.placement.agent === "gemini-cli");
+    expect(geminiPrune?.reason).toBe("gated-transition");
+
+    await runApply(sandbox.env, opts()); // no --prune
+    expect(fs.existsSync(geminiSkill)).toBe(false);
+    // The claude placement (gate enforced) is untouched.
+    expect(fs.existsSync(path.join(sandbox.home, ".claude/skills/fleet-update"))).toBe(true);
+  });
+
   test("a stale tprompt export of a gated skill stays behind --prune", async () => {
     sandbox = makeSandbox({ tprompt: true });
     const root = makeRoot(sandbox, "public");
