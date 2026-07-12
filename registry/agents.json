@@ -29,7 +29,15 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.claude/agents",
       "agentDefDialect": "claude",
-      "agentDefEvidence": "Source: upstream/claude-code src/tools/AgentTool/loadAgentsDir.ts:296-393,541-755 + src/utils/markdownConfigLoader.ts:297-372 (userDir = getClaudeConfigHomeDir()/agents, honors CLAUDE_CONFIG_DIR); docs code.claude.com/docs/en/sub-agents. Markdown + YAML frontmatter, body = system prompt; name+description required. Clone 2026-04 stale."
+      "agentDefEvidence": "Source: upstream/claude-code src/tools/AgentTool/loadAgentsDir.ts:296-393,541-755 + src/utils/markdownConfigLoader.ts:297-372 (userDir = getClaudeConfigHomeDir()/agents, honors CLAUDE_CONFIG_DIR); docs code.claude.com/docs/en/sub-agents. Markdown + YAML frontmatter, body = system prompt; name+description required. Clone 2026-04 stale.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9) + docs code.claude.com/docs/en/skills: disable-model-invocation honored, /name slash invocation works.",
+        "probedVersion": "2.1.207",
+        "probedOn": "2026-07-11",
+        "note": "Known upstream bugs can also block the user half of a gated skill — fails safe (never model-exposed)."
+      }
     },
     "codex": {
       "skillsSupport": "supported",
@@ -43,7 +51,14 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.codex/agents",
       "agentDefDialect": "codex",
-      "agentDefEvidence": "Source: upstream/codex codex-rs/core/src/config/agent_roles.rs:74-97,474-549,236-316 (config_folder/agents, recursive *.toml agent roles; RawAgentRoleFileToml name/description/nickname_candidates/developer_instructions); docs learn.chatgpt.com/docs/agent-configuration/subagents. TOML, one agent per file. Also one-time migration reads ~/.claude/agents/*.md -> ~/.codex/agents/*.toml (external_agent_config.rs EXTERNAL_AGENT_DIR='.claude')."
+      "agentDefEvidence": "Source: upstream/codex codex-rs/core/src/config/agent_roles.rs:74-97,474-549,236-316 (config_folder/agents, recursive *.toml agent roles; RawAgentRoleFileToml name/description/nickname_candidates/developer_instructions); docs learn.chatgpt.com/docs/agent-configuration/subagents. TOML, one agent per file. Also one-time migration reads ~/.claude/agents/*.md -> ~/.codex/agents/*.toml (external_agent_config.rs EXTERNAL_AGENT_DIR='.claude').",
+      "skillInvocation": {
+        "userInvocation": "mention",
+        "gate": "companion:agents/openai.yaml",
+        "evidence": "Live probe 2026-07-12: agents/openai.yaml with policy.allow_implicit_invocation: false hides the skill from the model; explicit $name mention still invokes it. Frontmatter disable-model-invocation is ignored (wf_a88d05f6-9b9 probe). Schema: ~/.codex/skills/.system/skill-creator/references/openai_yaml.md; contract still iterating upstream (openai/codex #19695).",
+        "probedVersion": "0.144.1",
+        "probedOn": "2026-07-12"
+      }
     },
     "github-copilot": {
       "skillsSupport": "supported",
@@ -57,7 +72,15 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.copilot/agents",
       "agentDefDialect": "copilot",
-      "agentDefEvidence": "Docs: docs.github.com copilot-cli create-custom-agents-for-cli (~/.copilot/agents personal path, .agent.md; home dir wins over repo on name clash) + reference/custom-agents-configuration (required name+description; optional target/tools/model/disable-model-invocation/user-invocable/mcp-servers/metadata). Markdown + YAML frontmatter."
+      "agentDefEvidence": "Docs: docs.github.com copilot-cli create-custom-agents-for-cli (~/.copilot/agents personal path, .agent.md; home dir wins over repo on name clash) + reference/custom-agents-configuration (required name+description; optional target/tools/model/disable-model-invocation/user-invocable/mcp-servers/metadata). Markdown + YAML frontmatter.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9): disable-model-invocation honored. PROBE ONLY — the field is undocumented for copilot skills; behavior could change silently on upgrade.",
+        "probedVersion": "1.0.65",
+        "probedOn": "2026-07-11",
+        "note": "Undocumented gate — re-verify on every copilot upgrade before relying on it."
+      }
     },
     "gemini-cli": {
       "skillsSupport": "supported",
@@ -70,7 +93,14 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.gemini/agents",
       "agentDefDialect": "gemini",
-      "agentDefEvidence": "Source: upstream/gemini-cli packages/core/src/config/storage.ts:117-119 (getUserAgentsDir = globalGeminiDir/agents) + packages/core/src/agents/agentLoader.ts:50-119 (localAgentSchema; body = system_prompt) + registry.ts:234-236; docs geminicli.com/docs/core/subagents. Markdown + YAML frontmatter (kind/name/description/display_name/tools/mcp_servers/model/temperature/max_turns/timeout_mins); name+description required. Clone 2026-05."
+      "agentDefEvidence": "Source: upstream/gemini-cli packages/core/src/config/storage.ts:117-119 (getUserAgentsDir = globalGeminiDir/agents) + packages/core/src/agents/agentLoader.ts:50-119 (localAgentSchema; body = system_prompt) + registry.ts:234-236; docs geminicli.com/docs/core/subagents. Markdown + YAML frontmatter (kind/name/description/display_name/tools/mcp_servers/model/temperature/max_turns/timeout_mins); name+description required. Clone 2026-05.",
+      "skillInvocation": {
+        "userInvocation": "none",
+        "gate": "none",
+        "evidence": "Source pass (wf_a88d05f6-9b9): skillManager.ts parses name+description only; disable-model-invocation ignored; no per-skill user invocation. Runtime probe was auth-blocked — medium confidence, source-based.",
+        "probedVersion": "0.49.0",
+        "probedOn": "2026-07-11"
+      }
     },
     "opencode": {
       "skillsSupport": "supported",
@@ -84,7 +114,14 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.config/opencode/agent",
       "agentDefDialect": "opencode",
-      "agentDefEvidence": "Source: upstream/opencode packages/core/src/config/plugin/agent.ts:19-23,31-44,80-159 (globs {agent,agents}/**/*.md; agentKeys model/variant/request/system/description/mode/hidden/color/steps/disabled/permissions; name derived from path) + global.ts:13,64 (config = xdgConfig/opencode, OPENCODE_CONFIG_DIR override); docs opencode.ai/docs/agents. Markdown + YAML frontmatter. Dir casing agent/ (singular) per opencode.ai; loader also accepts plural agents/."
+      "agentDefEvidence": "Source: upstream/opencode packages/core/src/config/plugin/agent.ts:19-23,31-44,80-159 (globs {agent,agents}/**/*.md; agentKeys model/variant/request/system/description/mode/hidden/color/steps/disabled/permissions; name derived from path) + global.ts:13,64 (config = xdgConfig/opencode, OPENCODE_CONFIG_DIR override); docs opencode.ai/docs/agents. Markdown + YAML frontmatter. Dir casing agent/ (singular) per opencode.ai; loader also accepts plural agents/.",
+      "skillInvocation": {
+        "userInvocation": "none",
+        "gate": "none",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9): disable-model-invocation ignored; no per-skill user invocation for skills. Upstream explicitly declined per-skill gating (opencode #11972).",
+        "probedVersion": "1.17.11",
+        "probedOn": "2026-07-11"
+      }
     },
     "pi": {
       "skillsSupport": "supported",
@@ -95,7 +132,14 @@
       "symlinks": "followed",
       "evidence": "Source: upstream/pi-mono packages/coding-agent/src/core/skills.ts (clone 2026-05): ~/.pi/agent/skills + ~/.agents/skills; honors disable-model-invocation; does NOT scan ~/.claude/skills.",
       "agentDefSupport": "none",
-      "agentDefEvidence": "Source: upstream/pi-mono packages/coding-agent (clone 2026-05): core CLI ships no user-global agent-definition directory (no discoverAgents/agents-dir loader under src). The only such loader is an opt-in example extension examples/extensions/subagent/agents.ts:88,97-115 (reads ~/.pi/agents/*.md), not the shipped CLI."
+      "agentDefEvidence": "Source: upstream/pi-mono packages/coding-agent (clone 2026-05): core CLI ships no user-global agent-definition directory (no discoverAgents/agents-dir loader under src). The only such loader is an opt-in example extension examples/extensions/subagent/agents.ts:88,97-115 (reads ~/.pi/agents/*.md), not the shipped CLI.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9) + source skills.ts (honors disable-model-invocation): gate honored; user invokes via /skill:name.",
+        "probedVersion": "0.80.2",
+        "probedOn": "2026-07-11"
+      }
     },
     "cursor": {
       "skillsSupport": "supported",
@@ -108,7 +152,14 @@
       "agentDefSupport": "supported",
       "agentDefDir": "~/.cursor/agents",
       "agentDefDialect": "cursor",
-      "agentDefEvidence": "Docs: cursor.com/docs/subagents — ~/.cursor/agents + .cursor/agents; Markdown + YAML frontmatter (name defaults to filename, description, model default 'inherit', readonly, is_background); invoke via /name; project wins on conflict. Also reads .claude/agents and .codex/agents for compatibility (cross-harness read, docs-confirmed)."
+      "agentDefEvidence": "Docs: cursor.com/docs/subagents — ~/.cursor/agents + .cursor/agents; Markdown + YAML frontmatter (name defaults to filename, description, model default 'inherit', readonly, is_background); invoke via /name; project wins on conflict. Also reads .claude/agents and .codex/agents for compatibility (cross-harness read, docs-confirmed).",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9) + docs cursor.com/docs/skills (disable-model-invocation listed as honored): gate honored; slash-palette invocation works.",
+        "probedVersion": "2026.07.09",
+        "probedOn": "2026-07-11"
+      }
     },
     "grok": {
       "skillsSupport": "supported",
@@ -119,7 +170,15 @@
       "symlinks": "unknown",
       "evidence": "Docs: docs.x.ai skills-plugins-marketplaces — ~/.grok/skills + config [skills] paths; Claude-compat and ~/.agents support ambiguous, treated as maybe-reads for deny guarantees.",
       "agentDefSupport": "unknown",
-      "agentDefEvidence": "No source or documentation evidence gathered in the AUR-614 passes that grok reads a user-global agent-definition directory. Unknown; do not assume support."
+      "agentDefEvidence": "No source or documentation evidence gathered in the AUR-614 passes that grok reads a user-global agent-definition directory. Unknown; do not assume support.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9) + docs docs.x.ai (disable-model-invocation and user-invocable are first-class documented fields): gate honored; slash invocation works.",
+        "probedVersion": "0.2.93",
+        "probedOn": "2026-07-11",
+        "note": "Also honors a separate user-invocable field."
+      }
     },
     "droid": {
       "skillsSupport": "supported",
@@ -130,7 +189,15 @@
       "symlinks": "unknown",
       "evidence": "~/.agents/skills read user-verified on-machine 2026-07-10 (Factory docs lag; they list only ~/.factory/skills globally). Honors user-invocable, disable-model-invocation; project dirs .factory/skills and .agent/skills (singular).",
       "agentDefSupport": "unknown",
-      "agentDefEvidence": "No agent-definition-directory evidence gathered in the AUR-614 source/docs passes for Factory/droid. Unknown; do not assume support."
+      "agentDefEvidence": "No agent-definition-directory evidence gathered in the AUR-614 source/docs passes for Factory/droid. Unknown; do not assume support.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "frontmatter",
+        "evidence": "Live two-dummy probe (wf_a88d05f6-9b9) + Factory docs (disable-model-invocation and user-invocable both documented): gate honored; slash invocation works.",
+        "probedVersion": "0.167.0",
+        "probedOn": "2026-07-11",
+        "note": "Also honors a separate user-invocable field."
+      }
     },
     "antigravity": {
       "skillsSupport": "supported",
@@ -141,7 +208,12 @@
       "symlinks": "unknown",
       "evidence": "Docs: antigravity.google/docs/skills — ~/.gemini/config/skills read by all variants; the CLI variant additionally reads ~/.gemini/skills (hence maybe-read of gemini's own dir); no evidence of home-level ~/.agents read.",
       "agentDefSupport": "unknown",
-      "agentDefEvidence": "No agent-definition-directory evidence gathered in the AUR-614 passes for antigravity. Unknown; do not assume support."
+      "agentDefEvidence": "No agent-definition-directory evidence gathered in the AUR-614 passes for antigravity. Unknown; do not assume support.",
+      "skillInvocation": {
+        "userInvocation": "unknown",
+        "gate": "unknown",
+        "evidence": "Not probed in wf_a88d05f6-9b9; no gating evidence gathered. Treat as no-gate for placement guarantees."
+      }
     },
     "hermes": {
       "skillsSupport": "supported",
@@ -153,7 +225,14 @@
       "addOnly": true,
       "evidence": "Source: upstream/hermes-agent tools/skills_tool.py (clone 2026-05): ~/.hermes/skills + config skills.external_dirs; first-seen name wins. Add-only policy per this repo's Hermes rules.",
       "agentDefSupport": "none",
-      "agentDefEvidence": "Source: upstream/hermes-agent tools/delegate_tool.py (clone 2026-05): subagents are config-key driven (delegation.* in config.yaml, dynamic spawn, max_spawn_depth); no ~/.hermes/agents/*.md|*.yaml loader (no agents-directory glob/listdir in *.py). ~/.hermes used only for logs/state."
+      "agentDefEvidence": "Source: upstream/hermes-agent tools/delegate_tool.py (clone 2026-05): subagents are config-key driven (delegation.* in config.yaml, dynamic spawn, max_spawn_depth); no ~/.hermes/agents/*.md|*.yaml loader (no agents-directory glob/listdir in *.py). ~/.hermes used only for logs/state.",
+      "skillInvocation": {
+        "userInvocation": "slash",
+        "gate": "none",
+        "evidence": "Live probe (wf_a88d05f6-9b9) + source grep of tools/skills_tool.py: zero references to disable-model-invocation or any gating field; skill stays model-exposed. Slash invocation works.",
+        "probedVersion": "0.18.2",
+        "probedOn": "2026-07-11"
+      }
     },
     "aider": {
       "skillsSupport": "none",

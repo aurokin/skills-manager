@@ -154,6 +154,125 @@ describe("agent-definition field validation", () => {
   });
 });
 
+describe("skillInvocation field validation", () => {
+  test("the real registry's skillInvocation fields validate", () => {
+    const reg = realRegistry();
+    expect(reg.agents["claude-code"]!.skillInvocation!.gate).toBe("frontmatter");
+    expect(reg.agents.codex!.skillInvocation!.gate).toBe("companion:agents/openai.yaml");
+    expect(reg.agents.codex!.skillInvocation!.userInvocation).toBe("mention");
+    expect(reg.agents.opencode!.skillInvocation!.gate).toBe("none");
+    expect(reg.agents.antigravity!.skillInvocation!.gate).toBe("unknown");
+    expect(reg.agents.antigravity!.skillInvocation!.probedVersion).toBeUndefined();
+    expect(reg.agents.aider!.skillInvocation).toBeUndefined();
+  });
+
+  test("an agent with no skillInvocation block is fine", () => {
+    expect(() => validateRegistry(baseRegistry())).not.toThrow();
+  });
+
+  test("rejects an invalid userInvocation value", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "telepathy" as never,
+      gate: "frontmatter",
+      evidence: "test",
+      probedVersion: "1.0.0",
+      probedOn: "2026-07-11",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/invalid skillInvocation.userInvocation/);
+  });
+
+  test("rejects an invalid gate value", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "companion:agents/other.yaml" as never,
+      evidence: "test",
+      probedVersion: "1.0.0",
+      probedOn: "2026-07-11",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/invalid skillInvocation.gate/);
+  });
+
+  test("rejects a missing or empty evidence", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "  ",
+      probedVersion: "1.0.0",
+      probedOn: "2026-07-11",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/skillInvocation requires evidence/);
+  });
+
+  test("a probed entry requires probedVersion", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "test",
+      probedOn: "2026-07-11",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/requires probedVersion/);
+  });
+
+  test("a probed entry requires probedOn as YYYY-MM-DD", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "test",
+      probedVersion: "1.0.0",
+      probedOn: "July 11, 2026",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/probedOn as a real YYYY-MM-DD date/);
+  });
+
+  test("rejects a well-formed but impossible calendar date", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "test",
+      probedVersion: "1.0.0",
+      probedOn: "2026-02-30",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/probedOn as a real YYYY-MM-DD date/);
+  });
+
+  test("a fully unknown entry must not declare probe fields", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "unknown",
+      gate: "unknown",
+      evidence: "not probed",
+      probedVersion: "1.0.0",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/must not declare probedVersion or probedOn/);
+  });
+
+  test("a fully unknown entry with evidence only is fine", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "unknown",
+      gate: "unknown",
+      evidence: "not probed",
+    };
+    expect(() => validateRegistry(reg)).not.toThrow();
+  });
+
+  test("a gate-only unknown still requires probe fields (userInvocation was probed)", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "unknown",
+      evidence: "test",
+    };
+    expect(() => validateRegistry(reg)).toThrow(/requires probedVersion/);
+  });
+});
+
 describe("readersOf", () => {
   const reg = realRegistry();
 

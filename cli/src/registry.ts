@@ -49,6 +49,7 @@ export function validateRegistry(reg: Registry): void {
       throw new RegistryError(`supported agent '${agentId}' has no ownDir`);
     }
     validateAgentDef(agentId, agent);
+    validateSkillInvocation(agentId, agent);
   }
 }
 
@@ -96,6 +97,62 @@ function validateAgentDef(agentId: string, agent: AgentCapability): void {
   if (typeof agent.agentDefEvidence !== "string" || agent.agentDefEvidence.trim() === "") {
     throw new RegistryError(`agent '${agentId}' agentDef fields require agentDefEvidence`);
   }
+}
+
+const SKILL_USER_INVOCATION_VALUES = new Set(["slash", "mention", "none", "unknown"]);
+const SKILL_GATE_VALUES = new Set([
+  "frontmatter",
+  "companion:agents/openai.yaml",
+  "none",
+  "unknown",
+]);
+
+/**
+ * Validate the optional `skillInvocation` capability block on one agent (ADR 0011):
+ * - `userInvocation` and `gate` must be known enum values;
+ * - `evidence` is always required;
+ * - `probedVersion` + `probedOn` (YYYY-MM-DD) are required whenever anything
+ *   was probed, and forbidden on a fully `unknown` entry (nothing was probed).
+ */
+function validateSkillInvocation(agentId: string, agent: AgentCapability): void {
+  const si = agent.skillInvocation;
+  if (si === undefined) return;
+
+  if (!SKILL_USER_INVOCATION_VALUES.has(si.userInvocation)) {
+    throw new RegistryError(
+      `agent '${agentId}' has invalid skillInvocation.userInvocation '${si.userInvocation}'`,
+    );
+  }
+  if (!SKILL_GATE_VALUES.has(si.gate)) {
+    throw new RegistryError(`agent '${agentId}' has invalid skillInvocation.gate '${si.gate}'`);
+  }
+  if (typeof si.evidence !== "string" || si.evidence.trim() === "") {
+    throw new RegistryError(`agent '${agentId}' skillInvocation requires evidence`);
+  }
+  const fullyUnknown = si.userInvocation === "unknown" && si.gate === "unknown";
+  if (fullyUnknown) {
+    if (si.probedVersion !== undefined || si.probedOn !== undefined) {
+      throw new RegistryError(
+        `agent '${agentId}' skillInvocation is fully unknown; must not declare probedVersion or probedOn`,
+      );
+    }
+    return;
+  }
+  if (typeof si.probedVersion !== "string" || si.probedVersion.trim() === "") {
+    throw new RegistryError(`agent '${agentId}' skillInvocation requires probedVersion`);
+  }
+  if (typeof si.probedOn !== "string" || !isIsoDate(si.probedOn)) {
+    throw new RegistryError(
+      `agent '${agentId}' skillInvocation requires probedOn as a real YYYY-MM-DD date`,
+    );
+  }
+}
+
+/** True iff `s` is a real calendar date in YYYY-MM-DD form (rejects e.g. 2026-02-30). */
+function isIsoDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 /**
