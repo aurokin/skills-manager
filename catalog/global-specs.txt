@@ -1,5 +1,4 @@
 pbakaus/impeccable@impeccable
-anthropics/skills@webapp-testing
 aurokin/diffwarden@diffwarden
 openai/skills@openai-docs
 openai/skills@pdf
