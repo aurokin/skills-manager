@@ -1,6 +1,6 @@
 # ADR 0012: Shared provider pools — multiple composed skills from one provider source
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-07-12
 - Amends: [ADR 0010](0010-composed-skills-artifact-type.md) (source-layout and provider-set rules only; render, placement, and state are untouched)
 
