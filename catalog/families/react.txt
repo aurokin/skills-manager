@@ -1,0 +1,3 @@
+vercel-labs/agent-skills@vercel-composition-patterns
+vercel-labs/agent-skills@vercel-react-best-practices
+vercel-labs/agent-skills@vercel-react-native-skills

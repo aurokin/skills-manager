@@ -569,7 +569,7 @@ test_batched_adds() {
     assert_log_count 1 "add|vercel-labs/agent-browser|"
     assert_log_contains "add|aurokin/diffwarden|diffwarden|agents=codex opencode gemini-cli github-copilot claude-code|extra=--full-depth"
     assert_log_contains "add|vercel-labs/agent-browser|agent-browser"
-    assert_log_contains "add|openai/skills|openai-docs pdf screenshot security-best-practices skill-creator"
+    assert_log_contains "add|openai/skills|openai-docs pdf screenshot skill-creator"
     assert_log_not_contains "add|expo/skills|"
     assert_log_not_contains "add|waynesutton/convexskills|"
 }

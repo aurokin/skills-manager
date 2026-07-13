@@ -4,7 +4,6 @@ aurokin/diffwarden@diffwarden
 openai/skills@openai-docs
 openai/skills@pdf
 openai/skills@screenshot
-openai/skills@security-best-practices
 openai/skills@skill-creator
 openclaw/openclaw@github
 openclaw/openclaw@tmux

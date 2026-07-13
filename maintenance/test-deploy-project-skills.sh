@@ -171,8 +171,12 @@ seed_default_mock_repos() {
     local convex_root="$MOCK_REPOS/waynesutton/convexskills"
     local mattpocock_root="$MOCK_REPOS/mattpocock/skills"
     local mobile_root="$MOCK_REPOS/acme/mobile-skills"
+    local vercel_root="$MOCK_REPOS/vercel-labs/agent-skills"
+    local copilot_root="$MOCK_REPOS/github/awesome-copilot"
+    local openai_root="$MOCK_REPOS/openai/skills"
 
-    mkdir -p "$expo_root" "$convex_root" "$mattpocock_root" "$mobile_root"
+    mkdir -p "$expo_root" "$convex_root" "$mattpocock_root" "$mobile_root" \
+        "$vercel_root" "$copilot_root" "$openai_root"
 
     create_mock_skill_file "$expo_root" "building-native-ui"
     create_mock_skill_file "$expo_root" "expo-api-routes"
@@ -201,6 +205,14 @@ seed_default_mock_repos() {
 
     create_mock_skill_file "$mattpocock_root" "teach"
     create_mock_skill_file "$mattpocock_root" "scaffold-exercises"
+
+    create_mock_skill_file "$vercel_root" "vercel-composition-patterns"
+    create_mock_skill_file "$vercel_root" "vercel-react-best-practices"
+    create_mock_skill_file "$vercel_root" "vercel-react-native-skills"
+
+    create_mock_skill_file "$copilot_root" "github-actions-hardening"
+
+    create_mock_skill_file "$openai_root" "security-best-practices"
 
     create_mock_skill_file "$mobile_root" "expo-internals"
     create_mock_skill_file "$mobile_root" "release-ops"

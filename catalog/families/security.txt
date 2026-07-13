@@ -1,0 +1,2 @@
+github/awesome-copilot@github-actions-hardening
+openai/skills@security-best-practices
