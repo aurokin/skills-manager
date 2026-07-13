@@ -446,6 +446,10 @@ export type WarningKind =
   | "modified"
   // A composed-skill provider file on disk that no dimension references (AUR-645).
   | "unused-provider"
+  // A shared-pool provider file (`composed/_providers/`, ADR 0012) referenced by no
+  // composed skill in its root — dead content staged ahead of a consumer; advice,
+  // never an error.
+  | "unused-pool-provider"
   // A path owned in state by one artifact key but desired under another (AUR-646):
   // the plan refuses the placement rather than write over or zombie-own it.
   | "ownership-handoff"

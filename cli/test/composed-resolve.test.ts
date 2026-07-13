@@ -9,7 +9,7 @@ import { CollisionError } from "../src/errors";
 import { loadRegistry } from "../src/registry";
 import { hashDesiredState, resolveDesiredState } from "../src/resolve";
 import type { DesiredComposedSkill, MachineConfig, Registry } from "../src/types";
-import { makeAgentDef, makeComposed, makeRoot, makeSandbox, makeSkill, realRegistryPath, type Sandbox } from "./util";
+import { makeAgentDef, makeComposed, makeProviderPool, makeRoot, makeSandbox, makeSkill, realRegistryPath, type Sandbox } from "./util";
 
 function reg(): Registry {
   return loadRegistry(realRegistryPath());
@@ -101,6 +101,56 @@ describe("resolveDesiredState — composed scan", () => {
     const desired = resolveDesiredState(sandbox.env, config(root), reg());
     const warn = desired.warnings.find((w) => w.kind === "unused-provider");
     expect(warn?.message).toContain("providers/pi.md");
+  });
+});
+
+describe("shared provider pool (ADR 0012)", () => {
+  test("a composed skill resolves a dimension provider from the root pool", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public", "public");
+    const opts = validComposed();
+    const { claude, ...local } = opts.providers!;
+    opts.providers = local;
+    makeComposed(root.path, "orchestrate", opts);
+    makeProviderPool(root.path, { claude: claude! });
+    const desired = resolveDesiredState(sandbox.env, config(root), reg());
+    expect(Object.keys(desired.composedSkills[0]!.providers).sort()).toEqual(["claude", "codex", "grok"]);
+    expect(desired.warnings).toEqual([]);
+  });
+
+  test("_providers is never loaded as a composed skill, even with a stray skill.yaml", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public", "public");
+    makeComposed(root.path, "orchestrate", validComposed());
+    const poolDir = makeProviderPool(root.path, {});
+    fs.writeFileSync(path.join(poolDir, "skill.yaml"), "name: _providers\n");
+    const desired = resolveDesiredState(sandbox.env, config(root), reg());
+    expect(desired.composedSkills.map((c) => c.name)).toEqual(["orchestrate"]);
+  });
+
+  test("a pool provider referenced by no composed skill in the root warns (advice)", () => {
+    sandbox = makeSandbox();
+    const root = makeRoot(sandbox, "public", "public");
+    makeComposed(root.path, "orchestrate", validComposed());
+    makeProviderPool(root.path, { pi: providerText("pi", "pi", { "pi-1": {} }) });
+    const desired = resolveDesiredState(sandbox.env, config(root), reg());
+    const warn = desired.warnings.find((w) => w.kind === "unused-pool-provider");
+    expect(warn?.message).toContain("_providers/pi.md");
+    // Advice only: the skill still resolves.
+    expect(desired.composedSkills.map((c) => c.name)).toEqual(["orchestrate"]);
+  });
+
+  test("pools are per-root: another root's skill does not consume this root's pool", () => {
+    sandbox = makeSandbox();
+    const pub = makeRoot(sandbox, "public", "public");
+    const priv = makeRoot(sandbox, "private", "private");
+    makeComposed(priv.path, "orchestrate", validComposed());
+    // pub has a pool but no composed skills → its claude pool file is unreferenced.
+    makeProviderPool(pub.path, { claude: providerText("claude", "claude", { opus: {} }) });
+    const desired = resolveDesiredState(sandbox.env, config(pub, priv), reg());
+    const warn = desired.warnings.find((w) => w.kind === "unused-pool-provider");
+    expect(warn?.message).toContain("root 'public'");
+    expect(warn?.message).toContain("_providers/claude.md");
   });
 });
 

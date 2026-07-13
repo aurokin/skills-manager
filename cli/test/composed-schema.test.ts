@@ -124,7 +124,7 @@ describe("validation matrix", () => {
     const input = withYaml((y) => {
       y.dimensions[1].candidates = [{ provider: "claude", model: "sonnet" }];
     });
-    expect(() => loadComposedSkill(input)).toThrow(/names model 'sonnet' not in providers\/claude\.md/);
+    expect(() => loadComposedSkill(input)).toThrow(/names model 'sonnet' not in provider 'claude' frontmatter/);
   });
 
   test("a valid candidate model passes", () => {
@@ -379,5 +379,86 @@ describe("splitConsumerSections", () => {
 
   test("both sections are optional", () => {
     expect(splitConsumerSections("just prose, no markers\n")).toEqual({});
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shared provider pool (ADR 0012)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("shared provider pool", () => {
+  /** baseInput with the claude provider moved from local files to the pool. */
+  function pooledInput(): ComposedSkillInput {
+    const input = baseInput();
+    const { claude, ...local } = input.providerFiles;
+    input.providerFiles = local;
+    input.poolProviderFiles = { claude: claude! };
+    return input;
+  }
+
+  test("a dimension candidate resolves from the pool", () => {
+    const { skill, warnings } = loadComposedSkill(pooledInput());
+    expect(Object.keys(skill.providers).sort()).toEqual(["claude", "codex", "grok"]);
+    expect(skill.providers.claude!.cli).toBe("claude");
+    expect(warnings).toEqual([]);
+  });
+
+  test("pool resolution renders byte-identically to local resolution", () => {
+    // Same provider bytes, different location → identical carrier content.
+    const local = loadComposedSkill(baseInput()).skill;
+    const pooled = loadComposedSkill(pooledInput()).skill;
+    expect(pooled.providers).toEqual(local.providers);
+  });
+
+  test("the same provider id local AND pooled is a build error, not shadowing", () => {
+    const input = baseInput();
+    input.poolProviderFiles = { claude: input.providerFiles.claude! };
+    expect(() => loadComposedSkill(input)).toThrow(/mutually exclusive, not shadowed/);
+  });
+
+  test("a pool provider filename not matching a registry directory id is rejected", () => {
+    const input = baseInput();
+    input.poolProviderFiles = { bogus: providerText("bogus", "bogus", { m: {} }) };
+    expect(() => loadComposedSkill(input)).toThrow(
+      /pool provider file '_providers\/bogus\.md' does not match any registry directory id/,
+    );
+  });
+
+  test("an unresolvable candidate names both lookup locations", () => {
+    const input = pooledInput();
+    delete input.poolProviderFiles!.claude;
+    expect(() => loadComposedSkill(input)).toThrow(
+      /no providers\/claude\.md or pool _providers\/claude\.md file/,
+    );
+  });
+
+  test("declared set derives from dimensions: an unreferenced local file is excluded (and warns)", () => {
+    const input = baseInput();
+    input.providerFiles.pi = providerText("pi", "pi", { "pi-1": {} });
+    const { skill, warnings } = loadComposedSkill(input);
+    // pi never enters the declared set, so {{provider_clis}} and self-derivation
+    // are computed without it (ADR 0012).
+    expect(Object.keys(skill.providers).sort()).toEqual(["claude", "codex", "grok"]);
+    expect(warnings.map((w) => w.kind)).toEqual(["unused-provider"]);
+  });
+
+  test("a referenced pool body gets posture-marker validation under the pool label", () => {
+    const input = pooledInput();
+    input.poolProviderFiles!.claude = input.poolProviderFiles!.claude!.replace(
+      "Provider claude.",
+      "<!-- @posture yolo -->\nunclosed",
+    );
+    expect(() => loadComposedSkill(input)).toThrow(/_providers\/claude\.md.*unclosed @posture/);
+  });
+
+  test("an UNreferenced pool file is not this skill's problem (no validation, no warning)", () => {
+    const input = baseInput();
+    // Malformed markers AND an id no dimension references: the skill loads clean.
+    input.poolProviderFiles = {
+      pi: `---\n${"name: pi\ncli: pi\nmodels: {}\n"}---\n\n<!-- @posture yolo -->\nunclosed\n`,
+    };
+    const { skill, warnings } = loadComposedSkill(input);
+    expect(Object.keys(skill.providers).sort()).toEqual(["claude", "codex", "grok"]);
+    expect(warnings).toEqual([]);
   });
 });

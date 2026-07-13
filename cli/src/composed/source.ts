@@ -15,6 +15,18 @@ export function isComposedDir(dir: string): boolean {
   return fs.existsSync(path.join(dir, "skill.yaml"));
 }
 
+/** The reserved shared-pool directory name under `composed/` (ADR 0012). */
+export const PROVIDER_POOL_DIR = "_providers";
+
+/**
+ * Read the per-root shared provider pool (`<root>/composed/_providers/*.md`, ADR
+ * 0012) keyed by provider id. Absent dir → empty pool. Pools are per-root and
+ * never merge across roots.
+ */
+export function readProviderPool(composedDir: string): Record<string, string> {
+  return readMarkdownDir(path.join(composedDir, PROVIDER_POOL_DIR));
+}
+
 /** Read every `<subdir>/*.md` file into a map keyed by basename (minus `.md`). */
 function readMarkdownDir(dir: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -42,6 +54,7 @@ export function loadComposedSkillFromDir(
   const templatePath = path.join(dir, "SKILL.tmpl.md");
   const template = fs.existsSync(templatePath) ? fs.readFileSync(templatePath, "utf8") : undefined;
   const providerFiles = readMarkdownDir(path.join(dir, "providers"));
+  const poolProviderFiles = readProviderPool(path.dirname(dir));
   const consumerFiles = readMarkdownDir(path.join(dir, "consumers"));
 
   return loadComposedSkill({
@@ -51,6 +64,7 @@ export function loadComposedSkillFromDir(
     skillYaml,
     template,
     providerFiles,
+    poolProviderFiles,
     consumerFiles,
     registry,
   });

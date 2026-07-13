@@ -190,6 +190,16 @@ export function makeComposed(
   return dir;
 }
 
+/** Write a shared provider pool (`<root>/composed/_providers/*.md`, ADR 0012). */
+export function makeProviderPool(rootPath: string, providers: Record<string, string>): string {
+  const dir = path.join(rootPath, "composed", "_providers");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const [id, text] of Object.entries(providers)) {
+    fs.writeFileSync(path.join(dir, `${id}.md`), text);
+  }
+  return dir;
+}
+
 /** Write an overlay.json at a root path. */
 export function makeOverlay(
   rootPath: string,

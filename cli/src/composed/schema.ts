@@ -53,6 +53,8 @@ export interface ComposedSkillInput {
   template: string | undefined;
   /** Provider files keyed by id (basename minus .md) → raw file text. */
   providerFiles: Record<string, string>;
+  /** Shared-pool provider files (`composed/_providers/*.md`, ADR 0012), same keying. */
+  poolProviderFiles?: Record<string, string>;
   /** Consumer files keyed by id (basename minus .md) → raw file text. */
   consumerFiles: Record<string, string>;
   registry: Registry;
@@ -85,32 +87,72 @@ export function loadComposedSkill(input: ComposedSkillInput): {
 
   const consumers = parseConsumers(raw, path);
   const dimensions = parseDimensions(raw, path);
-  const providers = parseProviders(input.providerFiles, path);
+  const localProviders = parseProviders(input.providerFiles, path, "providers");
+  const poolProviders = parseProviders(input.poolProviderFiles ?? {}, path, "_providers");
 
   // SKILL.tmpl.md must exist (the body template is not optional).
   if (input.template === undefined) {
     throw new ComposedSkillError(`Missing SKILL.tmpl.md for composed skill '${name}' (${path})`);
   }
 
-  // Every provider filename must name a registry directory id — the guard that
-  // keeps provider-id space aligned with directory-id space (droid's ownDir is
-  // `factory`, so this alignment is a coincidence of the v1 set, not an invariant).
-  for (const providerId of Object.keys(providers)) {
+  // Every provider filename — local and pool — must name a registry directory id:
+  // the guard that keeps provider-id space aligned with directory-id space (droid's
+  // ownDir is `factory`, so this alignment is a coincidence of the v1 set, not an
+  // invariant).
+  for (const providerId of Object.keys(localProviders)) {
     if (!(providerId in registry.directories)) {
       throw new ComposedSkillError(
         `provider file 'providers/${providerId}.md' does not match any registry directory id (${path})`,
       );
     }
   }
+  for (const providerId of Object.keys(poolProviders)) {
+    if (!(providerId in registry.directories)) {
+      throw new ComposedSkillError(
+        `pool provider file '_providers/${providerId}.md' does not match any registry directory id (${path})`,
+      );
+    }
+  }
 
-  validateDimensions(dimensions, providers, path);
+  // Local and pool are mutually exclusive per provider id — shadowing would
+  // reintroduce exactly the drift the pool exists to prevent (ADR 0012); skill- or
+  // consumer-relative material belongs in consumer files, never a provider variant.
+  for (const providerId of Object.keys(localProviders).sort()) {
+    if (providerId in poolProviders) {
+      throw new ComposedSkillError(
+        `provider '${providerId}' exists as both 'providers/${providerId}.md' and pool '_providers/${providerId}.md' — ` +
+          `they are mutually exclusive, not shadowed (${path})`,
+      );
+    }
+  }
+  const available = { ...poolProviders, ...localProviders };
 
-  // Posture-marker well-formedness across the template, all provider bodies, and
-  // all consumer files. Filtering itself is AUR-646; this only rejects malformed
-  // grammar so a later compile cannot silently drop content.
+  validateDimensions(dimensions, available, path);
+
+  // Declared provider set = the union of dimension-candidate provider ids (ADR
+  // 0012; dimensions were already the authoritative statement of use — the local
+  // directory listing was only a proxy for it). Unreferenced local files warn
+  // below; unreferenced pool files are the root's concern, not this skill's.
+  const referenced = new Set<string>();
+  for (const dim of dimensions) {
+    for (const c of dim.candidates) referenced.add(c.provider);
+  }
+  const providers: Record<string, ComposedProvider> = {};
+  for (const id of Object.keys(available).sort()) {
+    if (referenced.has(id)) providers[id] = available[id]!;
+  }
+
+  // Posture-marker well-formedness across the template, all provider bodies (every
+  // local file plus the referenced pool files — unreferenced pool files never enter
+  // a render from this skill), and all consumer files. Filtering itself is AUR-646;
+  // this only rejects malformed grammar so a later compile cannot silently drop
+  // content.
   validatePostureMarkers(input.template, `${name}/SKILL.tmpl.md`, false);
-  for (const [id, provider] of Object.entries(providers)) {
+  for (const [id, provider] of Object.entries(localProviders)) {
     validatePostureMarkers(provider.body, `${name}/providers/${id}.md`, false);
+  }
+  for (const [id, provider] of Object.entries(poolProviders)) {
+    if (referenced.has(id)) validatePostureMarkers(provider.body, `_providers/${id}.md`, false);
   }
   for (const id of Object.keys(input.consumerFiles).sort()) {
     if (!(id in consumers)) {
@@ -130,7 +172,7 @@ export function loadComposedSkill(input: ComposedSkillInput): {
     consumerFiles[id] = splitConsumerSections(text);
   }
 
-  const warnings = unusedProviderWarnings(name, providers, dimensions);
+  const warnings = unusedProviderWarnings(name, localProviders, dimensions);
 
   const skill: DesiredComposedSkill = {
     name,
@@ -245,12 +287,13 @@ function validateDimensions(
       const provider = providers[c.provider];
       if (!provider) {
         throw new ComposedSkillError(
-          `Dimension '${dim.key}' references provider '${c.provider}' with no providers/${c.provider}.md file (${path})`,
+          `Dimension '${dim.key}' references provider '${c.provider}' with no providers/${c.provider}.md ` +
+            `or pool _providers/${c.provider}.md file (${path})`,
         );
       }
       if (!(c.model in provider.models)) {
         throw new ComposedSkillError(
-          `Dimension '${dim.key}' candidate names model '${c.model}' not in providers/${c.provider}.md frontmatter (${path})`,
+          `Dimension '${dim.key}' candidate names model '${c.model}' not in provider '${c.provider}' frontmatter (${path})`,
         );
       }
     }
@@ -320,20 +363,29 @@ function validateConsumersAgainstRegistry(
 // Provider files (frontmatter registry + body)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function parseProviders(files: Record<string, string>, path: string): Record<string, ComposedProvider> {
+function parseProviders(
+  files: Record<string, string>,
+  path: string,
+  dirLabel: "providers" | "_providers",
+): Record<string, ComposedProvider> {
   const out: Record<string, ComposedProvider> = {};
   for (const [id, text] of Object.entries(files)) {
-    out[id] = parseProvider(id, text, path);
+    out[id] = parseProvider(id, text, path, dirLabel);
   }
   return out;
 }
 
-function parseProvider(id: string, text: string, path: string): ComposedProvider {
+function parseProvider(
+  id: string,
+  text: string,
+  path: string,
+  dirLabel: "providers" | "_providers",
+): ComposedProvider {
   const split = splitFrontmatter(text);
   if (split === undefined) {
-    throw new ComposedSkillError(`provider file 'providers/${id}.md' has no YAML frontmatter (${path})`);
+    throw new ComposedSkillError(`provider file '${dirLabel}/${id}.md' has no YAML frontmatter (${path})`);
   }
-  const label = `${path} (providers/${id}.md)`;
+  const label = `${path} (${dirLabel}/${id}.md)`;
   const data = asRootMapping(split.data, label);
   rejectUnknownKeys(data, ["name", "cli", "models", "verified"], `Unknown provider frontmatter keys in ${label}`);
   const name = requiredStr(data, "name", label);

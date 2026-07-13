@@ -9,7 +9,7 @@ import { parse as parseYaml } from "yaml";
 import { deriveSkillName } from "./agentdef/dialects/derived-skill";
 import { scopingForAgentDef } from "./agentdef/scoping";
 import { isAgentDefDir, loadAgentDefinitionFromDir } from "./agentdef/source";
-import { isComposedDir, loadComposedSkillFromDir } from "./composed/source";
+import { isComposedDir, loadComposedSkillFromDir, PROVIDER_POOL_DIR, readProviderPool } from "./composed/source";
 import { gatingForSkill, loadScopingSource, publicScopingPath, scopingForSkill } from "./catalog";
 import { CollisionError } from "./errors";
 import type { SkmEnv } from "./env";
@@ -159,12 +159,22 @@ export function resolveDesiredState(
         .map((e) => e.name)
         .sort();
 
+      // Providers referenced by any composed skill loaded from THIS root — pools
+      // are per-root, so the unused-pool check is scoped to the root too.
+      const rootReferenced = new Set<string>();
+
       for (const name of names) {
+        // The shared provider pool (ADR 0012) is never a skill, even if a stray
+        // skill.yaml appears inside it.
+        if (name === PROVIDER_POOL_DIR) continue;
         const srcDir = path.join(composedDir, name);
         if (!isComposedDir(srcDir)) continue; // a dir without skill.yaml is not composed
 
         const source = { root: root.name, visibility: root.visibility, path: srcDir };
         const { skill, warnings: skillWarnings } = loadComposedSkillFromDir(srcDir, name, source, registry);
+        for (const dim of skill.dimensions) {
+          for (const c of dim.candidates) rootReferenced.add(c.provider);
+        }
 
         if (composedByName.has(name)) {
           warnings.push({
@@ -176,6 +186,18 @@ export function resolveDesiredState(
         composedByName.set(name, skill);
         composedWarnings.set(name, skillWarnings);
         composedOwnerRoot.set(name, root.name);
+      }
+
+      // Pool advice (ADR 0012): a pool file no composed skill in this root
+      // references is dead content — legitimate when staging a provider ahead of
+      // its first consumer, so a warning, never an error.
+      for (const id of Object.keys(readProviderPool(composedDir)).sort()) {
+        if (!rootReferenced.has(id)) {
+          warnings.push({
+            kind: "unused-pool-provider",
+            message: `root '${root.name}' has pool provider '_providers/${id}.md' referenced by no composed skill in that root`,
+          });
+        }
       }
     }
   }

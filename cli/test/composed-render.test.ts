@@ -79,6 +79,36 @@ describe("golden byte-match", () => {
     }
   }
 
+  // ADR 0012: moving a provider from providers/ to the root pool must not change a
+  // single rendered byte — the property the orchestrate migration relies on.
+  test("pool-resolved fixture renders byte-identically to its local-provider original", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "skm-pool-golden-"));
+    try {
+      const src = `${fixturesDir}/composed-kitchen-sink`;
+      const skillDir = path.join(tmp, "composed", "composed-kitchen-sink");
+      fs.cpSync(src, skillDir, { recursive: true });
+      // Move ONE provider (grok) into the pool; the rest stay local.
+      const poolDir = path.join(tmp, "composed", "_providers");
+      fs.mkdirSync(poolDir, { recursive: true });
+      fs.renameSync(path.join(skillDir, "providers", "grok.md"), path.join(poolDir, "grok.md"));
+
+      const original = loadFixture("composed-kitchen-sink");
+      const pooled = loadComposedSkillFromDir(
+        skillDir,
+        "orchestrate",
+        { root: "private", visibility: "private", path: skillDir },
+        registry,
+      ).skill;
+      for (const consumer of Object.keys(original.consumers)) {
+        expect(composedTreeHash(pooled, consumer, registry)).toBe(
+          composedTreeHash(original, consumer, registry),
+        );
+      }
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("no unfiltered @posture/@end/@section marker survives into any rendered output", () => {
     const outputs: string[] = [];
     for (const fixture of ["composed-kitchen-sink", "composed-posture"]) {
