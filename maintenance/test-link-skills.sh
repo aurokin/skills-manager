@@ -68,6 +68,21 @@ create_skill_dir() {
     mkdir -p "$FIXTURE_REPO/skills/$1"
 }
 
+create_gated_skill_dir() {
+    mkdir -p "$FIXTURE_REPO/skills/$1"
+    cat > "$FIXTURE_REPO/skills/$1/SKILL.md" <<EOF
+---
+name: $1
+description: Gated fixture skill.
+disable-model-invocation: true
+---
+
+Body content; a stray
+disable-model-invocation: true
+outside frontmatter must not matter elsewhere.
+EOF
+}
+
 run_link() {
     (
         cd "$FIXTURE_REPO"
@@ -182,7 +197,24 @@ test_hermes_opt_in_leaves_foreign_target_symlinks() {
     assert_symlink_target "$HOME/.hermes/skills/foreign-skill" "$TEST_ROOT/external/foreign-skill"
 }
 
+test_gated_skill_not_linked_and_existing_link_removed() {
+    create_skill_dir "agents-md"
+    create_gated_skill_dir "gated-skill"
+    mkdir -p "$HOME/.agents/skills" "$HOME/.claude/skills"
+    ln -s "$FIXTURE_REPO/skills/gated-skill/" "$HOME/.agents/skills/gated-skill"
+    ln -s "$FIXTURE_REPO/skills/gated-skill/" "$HOME/.claude/skills/gated-skill"
+
+    run_link
+
+    assert_symlink_target "$HOME/.agents/skills/agents-md" "$FIXTURE_REPO/skills/agents-md/"
+    assert_not_exists "$HOME/.agents/skills/gated-skill"
+    assert_not_exists "$HOME/.claude/skills/gated-skill"
+    assert_contains "$OUTPUT_FILE" "Skipping gated skill (skm-placed): gated-skill"
+    assert_contains "$OUTPUT_FILE" "Removing stale local link: gated-skill from $HOME/.agents/skills"
+}
+
 run_test "removes stale local symlinks" test_removes_stale_local_symlinks
+run_test "gated skill is not linked and stale links are removed" test_gated_skill_not_linked_and_existing_link_removed
 run_test "empty skills dir cleans without bogus links" test_empty_skills_dir_cleans_without_creating_bogus_links
 run_test "default does not create ~/.hermes/skills target" test_default_does_not_create_hermes_target
 run_test "hermes opt-in links local skills into ~/.hermes/skills" test_hermes_opt_in_links_local_skills_into_hermes_dir

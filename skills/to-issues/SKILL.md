@@ -1,23 +1,14 @@
 ---
 name: to-issues
-description: Break a plan, spec, or PRD into independently-grabbable issues using tracer-bullet vertical slices. Use when user wants to convert a plan into issues, create implementation tickets, or break down work into issues.
+description: Break a plan, spec, or PRD into independently-grabbable issues using tracer-bullet vertical slices, created blockers-first in the connected tracker. User-invoked - run when the user asks to break work down into issues.
+disable-model-invocation: true
 ---
 
 # To Issues
 
-Break a plan into independently-grabbable issues using vertical slices (tracer bullets).
+Break a plan into independently-grabbable issues using vertical slices (tracer bullets). Work from whatever is already in the conversation context; if the user passes a document, use it as the baseline.
 
-## Process
-
-### 1. Gather context
-
-Work from whatever is already in the conversation context. If the user passes a document or other sources, use those sources as the baseline for the plan.
-
-### 2. Explore the codebase (optional)
-
-If you have not already explored the codebase, do so to understand the current state of the code.
-
-### 3. Draft vertical slices
+## Draft vertical slices
 
 Break the plan into **tracer bullet** issues. Each issue is a thin vertical slice that cuts through ALL integration layers end-to-end, NOT a horizontal slice of one layer.
 
@@ -29,14 +20,9 @@ Slices may be 'HITL' or 'AFK'. HITL slices require human interaction, such as an
 - Prefer many thin slices over few thick ones
 </vertical-slice-rules>
 
-### 4. Quiz the user
+## Quiz the user
 
-Present the proposed breakdown as a numbered list. For each slice, show:
-
-- **Title**: short descriptive name
-- **Type**: HITL / AFK
-- **Blocked by**: which other slices (if any) must complete first
-- **User stories covered**: which user stories this addresses (if the source material has them)
+Present the proposed breakdown as a numbered list. For each slice, show its title, type (HITL/AFK), what it is blocked by, and which user stories it covers (if the source material has them).
 
 Ask the user:
 
@@ -47,40 +33,14 @@ Ask the user:
 
 Iterate until the user approves the breakdown.
 
-### 5. Create the issues
+## Create the issues
 
-Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
+Create the approved issues in dependency order (blockers first) directly in the user's connected tracker (e.g. the Linear MCP), using the tracker's native blocking and parent relations so later issues reference real identifiers. If no tracker is connected, write numbered markdown files (`<n>_<title>.md`) to a directory the user names.
 
-Give each issue a unique issue number
+Each issue carries: **What to build** — a concise description of the end-to-end behavior, not layer-by-layer implementation; an acceptance-criteria checklist; and its blockers, or "None - can start immediately".
 
-Create individual markdown files in this format - <issue-number>_<issue-title>.md
+Upload expectations:
 
-Place them in this folder, create them if they don't exist - .ws/<plan-name>
-
-<issue-template>
-
-## <issue-title>
-
-#<issue-number> 
-
-## Parent
-
-#<parent-issue-number> (if the issue number exists, otherwise omit this section)
-
-## What to build
-
-A concise description of this vertical slice. Describe the end-to-end behavior, not layer-by-layer implementation.
-
-## Acceptance criteria
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Criterion 3
-
-## Blocked by
-
-- Blocked by #<blocking-issue-number> (if any)
-
-Or "None - can start immediately" if no blockers.
-
-</issue-template>
+- The source plan/PRD becomes the milestone or project description.
+- Strip relationship markup from issue bodies once relations are modeled natively in the tracker.
+- Each issue must be self-sufficient: an agent reading the issue, its milestone, and its linked issues can plan the work without extra context.

@@ -328,12 +328,16 @@ Local repo-managed skills live in `skills/<name>/SKILL.md`.
 
 Current local skills:
 - `agents-md`
-- `to-prd` — forked from `mattpocock/to-prd`
-- `to-issues` — forked from `mattpocock/to-issues`
+- `to-issues` — gated (`disable-model-invocation: true`); distilled from the
+  retired mattpocock fork down to the non-native methodology (tracer-bullet
+  vertical slices, HITL/AFK classification, calibration questions), writing
+  blockers-first into the connected tracker via MCP
 
-The `to-prd` and `to-issues` skills are maintained here as local forks
-rather than installed upstream packages. (`split-to-prs`, an exact fork of
-the Cursor app's shipped skill, moved to the private overlay root.)
+`to-prd` and `linear-yeet` were retired 2026-07 (frontier agents produce
+PRDs and drive the Linear MCP natively); `split-to-prs`, an exact fork of
+the Cursor app's shipped skill, moved to the private overlay root. Gated
+local skills are skipped by `link-skills.sh` and placed per-agent by `skm`
+(ADR 0011).
 
 To add a new local skill:
 

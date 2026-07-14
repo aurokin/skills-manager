@@ -23,8 +23,25 @@ if agents_include_hermes skills_agents; then
 fi
 SKILL_PATHS=("$SKILLS_DIR"/*/)
 
-declare -A LOCAL_SKILL_NAMES=()
+# Gated skills (disable-model-invocation: true in frontmatter) are never
+# placed in shared roots; skm renders them per-agent (ADR 0011).
+skill_is_gated() {
+    local skill_md="$1/SKILL.md"
+    [ -f "$skill_md" ] || return 1
+    awk '/^---$/ { fence++; next } fence == 1 && /^disable-model-invocation: true$/ { found = 1 } fence >= 2 { exit } END { exit !found }' "$skill_md"
+}
+
+LINKABLE_SKILL_PATHS=()
 for skill in "${SKILL_PATHS[@]}"; do
+    if skill_is_gated "$skill"; then
+        echo "Skipping gated skill (skm-placed): $(basename "$skill")"
+    else
+        LINKABLE_SKILL_PATHS+=("$skill")
+    fi
+done
+
+declare -A LOCAL_SKILL_NAMES=()
+for skill in "${LINKABLE_SKILL_PATHS[@]}"; do
     LOCAL_SKILL_NAMES["$(basename "$skill")"]=1
 done
 
@@ -47,7 +64,7 @@ for target_dir in "${SKILL_TARGET_DIRS[@]}"; do
 done
 
 # Link each skill
-for skill in "${SKILL_PATHS[@]}"; do
+for skill in "${LINKABLE_SKILL_PATHS[@]}"; do
     skill_name="$(basename "$skill")"
 
     for target_dir in "${SKILL_TARGET_DIRS[@]}"; do
