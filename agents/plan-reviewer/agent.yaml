@@ -1,5 +1,5 @@
 name: plan-reviewer
-description: Skeptical review of implementation plans, design docs, or technical proposals.
+description: Skeptical fresh-eyes review of plans of any kind — implementation plans, design docs, proposals, process changes. Finds gaps, unstated assumptions, and better alternatives.
 defaults:
   sandbox: read-only
   model_strategy: floating
@@ -11,9 +11,7 @@ claude:
   disallowed_tools:
     - Write
   permission_mode: default
-  max_turns: 16
 gemini:
   tools:
     - read_file
     - grep_search
-  max_turns: 16
