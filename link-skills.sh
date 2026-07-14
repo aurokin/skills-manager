@@ -28,7 +28,9 @@ SKILL_PATHS=("$SKILLS_DIR"/*/)
 skill_is_gated() {
     local skill_md="$1/SKILL.md"
     [ -f "$skill_md" ] || return 1
-    awk '/^---$/ { fence++; next } fence == 1 && /^disable-model-invocation: true$/ { found = 1 } fence >= 2 { exit } END { exit !found }' "$skill_md"
+    # Tolerate YAML-equivalent forms skm's parser also accepts: extra
+    # whitespace and trailing comments.
+    awk '/^---[[:space:]]*$/ { fence++; next } fence == 1 && /^disable-model-invocation:[[:space:]]+true[[:space:]]*(#.*)?$/ { found = 1 } fence >= 2 { exit } END { exit !found }' "$skill_md"
 }
 
 LINKABLE_SKILL_PATHS=()

@@ -74,7 +74,7 @@ create_gated_skill_dir() {
 ---
 name: $1
 description: Gated fixture skill.
-disable-model-invocation: true
+disable-model-invocation:  true  # YAML-equivalent spacing + comment must still gate
 ---
 
 Body content; a stray
