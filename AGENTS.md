@@ -20,11 +20,11 @@ placement, scoping, composed-skill rendering, and drift detection. See
 ## Key Commands
 
 ```bash
-# Full sync: remove stale, update existing, add missing upstream skills, then link local skills
+# Upstream sync: remove stale, update existing, add missing upstream skills
 ./install-repro-skills.sh
 
-# Link local skills only (no upstream sync)
-./link-skills.sh
+# Place local skills (symlinks + gated per-agent renders) — skm owns this
+cd cli && bun src/cli.ts plan && bun src/cli.ts apply
 
 # Refresh the forked agents-md skill from upstream
 bash maintenance/sync-agents-md.sh
@@ -42,9 +42,8 @@ Requires: `skills` CLI and `jq` on PATH. Maintenance sync also uses `curl`.
 
 ## Architecture
 
-- `install-repro-skills.sh` — Declarative sync script. The `specs` array is the source of truth for desired upstream skills. Runs four phases: remove stale, update existing, add missing, link local. Uses `skills list -g --json` to diff current state against desired state. Skills with `@` target a specific skill from a multi-skill repo; without `@` installs all skills from the repo.
-- `link-skills.sh` — Symlinks each `skills/<name>/` directory into `~/.agents/skills/` and `~/.claude/skills/` (and `~/.hermes/skills/` when `hermes-agent` is opted in).
-- `lib/agents.sh` — Defines `STANDARD_AGENTS` and helpers (`compute_skills_agents`, `agents_include_hermes`, `agents_excluding_hermes`). Sourced by both install scripts and `link-skills.sh`.
+- `install-repro-skills.sh` — Declarative upstream-sync script. `catalog/global-specs.txt` is the source of truth for desired upstream skills. Runs three phases: remove stale, update existing, add missing. Uses `skills list -g --json` to diff current state against desired state. Skills with `@` target a specific skill from a multi-skill repo; without `@` installs all skills from the repo. Local-skill placement is skm's job (`link-skills.sh` was retired at placement parity).
+- `lib/agents.sh` — Defines `STANDARD_AGENTS` and helpers (`compute_skills_agents`, `agents_include_hermes`, `agents_excluding_hermes`). Sourced by the install and deploy scripts.
 - `skills/<name>/SKILL.md` — Each local skill is a single markdown file with YAML frontmatter (`name`, `description`) followed by the skill prompt content.
 
 ## Hermes Behavior
@@ -52,7 +51,7 @@ Requires: `skills` CLI and `jq` on PATH. Maintenance sync also uses `curl`.
 When `hermes-agent` is in `SKILLS_AGENTS`:
 - `install-repro-skills.sh` passes `hermes-agent` to `skills add`. Stale removal is scoped with `-a` to non-Hermes agents so the CLI never deletes from `~/.hermes/skills`.
 - A post-removal sweep deletes broken symlinks in `~/.hermes/skills` whose targets resolve into `skills/` or `~/.agents/skills/` (our own dangling writes). Real directories and foreign-target symlinks are never touched.
-- `link-skills.sh` adds `~/.hermes/skills` as a symlink target. Stale-link cleanup only removes symlinks pointing back into this repo's `skills/`.
+- `skm` places local skills into `~/.hermes/skills` add-only: placements are created but never pruned (covered by `cli/test/e2e.test.ts`).
 - Without `hermes-agent` in `SKILLS_AGENTS`, scripts never read or write `~/.hermes/skills`.
 
 ## Forked Skills
@@ -80,7 +79,7 @@ belong in a private overlay root or machine config).
 
 ## Adding a New Local Skill
 
-Create `skills/<name>/SKILL.md` with frontmatter and prompt content, then run either install script.
+Create `skills/<name>/SKILL.md` with frontmatter and prompt content, then run `skm plan` / `skm apply` (from `cli/`, via `bun`).
 
 ## Making a Skill Gated (User-Invoked-Only)
 

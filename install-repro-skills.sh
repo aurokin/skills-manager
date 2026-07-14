@@ -211,8 +211,8 @@ main() {
     print_resolved_repo_skill_summary "Resolved global skill summary:" desired_specs
 
     # Get currently installed global skill names (only ~/.agents/skills/).
-    # The skills CLI ignores symlinks, so locally-linked skills from
-    # link-skills.sh are naturally excluded.
+    # The skills CLI ignores symlinks, so skm-linked local skills are
+    # naturally excluded.
     local -A installed_names=()
     while IFS= read -r name; do
         [ -z "$name" ] && continue
@@ -262,7 +262,7 @@ main() {
     # untouched so Hermes can manage its own skill collection.
     #
     # readlink target prefixes we recognize as ours:
-    #   $SCRIPT_DIR/skills/      — local repo skills linked by link-skills.sh
+    #   $SCRIPT_DIR/skills/      — local repo skills linked by skm
     #                              (absolute path)
     #   $HOME/.agents/skills/    — canonical install path for multi-agent
     #                              installs by the skills CLI (absolute form)
@@ -367,13 +367,10 @@ main() {
         done
     fi
 
-    # --- Phase 4: Link local skills ---
+    # Local-skill placement (symlinks, gated per-agent renders, scoping)
+    # is owned by skm; this script only syncs upstream installs.
     echo ""
-    echo "Linking local repo skills..."
-    "$SCRIPT_DIR/link-skills.sh"
-
-    echo ""
-    echo "Done."
+    echo "Done. (Local skills are placed by skm: cd $SCRIPT_DIR/cli && bun src/cli.ts apply)"
 }
 
 main "$@"

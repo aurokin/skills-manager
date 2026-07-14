@@ -97,12 +97,13 @@ reviewed plan (refused if the desired-state hash changed). Every verb supports
 
 ## Relationship to the bash scripts
 
-`link-skills.sh`, `install-repro-skills.sh`, and `lib/agents.sh` remain the
-**authoritative** installers until phase 6 of the design doc's migration plan.
-During migration skm runs alongside them: it manages local + scoped placement
-and ownership, while the bash path continues to install upstream skills. skm
-never deletes what it does not own, so the two coexist safely. The scripts are
-retired only once skm reaches parity (design doc §10).
+skm owns local-skill placement outright: `link-skills.sh` was retired at
+placement parity (gate awareness, hermes add-only, stale-link pruning are
+covered by `cli/test`). `install-repro-skills.sh` and `lib/agents.sh` remain
+**authoritative** for upstream-skill sync until phase 7's vendoring path
+exists, and `deploy-project-skills.sh` still owns families (phase 6 remainder).
+skm never deletes what it does not own, so it coexists safely with the
+remaining bash path.
 
 ## Development
 

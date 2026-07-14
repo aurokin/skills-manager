@@ -50,8 +50,9 @@ It will:
 - update existing global skills
 - add any missing curated global skills
 - audit selected upstream repos for coverage drift
-- link local repo skills into both global skill directories
 - clean up broken symlinks in those global directories
+
+Local repo skills are placed separately by `skm` (see below).
 
 Use it when you want to update your personal baseline skill environment.
 
@@ -103,7 +104,8 @@ Hermes behavior is intentionally different:
 
 - Hermes does **not** read `~/.agents/skills` by default. The `skills` CLI
   installs Hermes targets under `~/.hermes/skills/<name>`. Local repo skills
-  are symlinked there by `link-skills.sh` when `hermes-agent` is opted in.
+  are symlinked there by `skm` when hermes is enabled (add-only: skm never
+  prunes hermes placements).
 - `~/.hermes/skills` is treated as **add-only**. Stale-skill removal is scoped
   with `-a` to non-Hermes agents so the CLI never removes a Hermes entry on
   our behalf. Hermes packages and creates its own skills in that directory,
@@ -178,22 +180,21 @@ List available families:
 ./deploy-project-skills.sh --list-families
 ```
 
-### `./link-skills.sh`
+### Local-skill placement (`skm`)
 
-Symlinks local repo skills from `skills/` into:
-- `~/.agents/skills`
-- `~/.claude/skills`
-- `~/.hermes/skills` — only when `hermes-agent` is in `SKILLS_AGENTS`
-
-Use it when you only want to refresh local repo skills without touching upstream packages.
+Local skills from `skills/` (and overlay roots) are placed by the `skm` CLI —
+symlinks into shared roots for unscoped skills, rendered per-agent trees for
+gated ones, ownership-tracked and prunable:
 
 ```bash
-./link-skills.sh
+cd cli
+bun src/cli.ts plan   # preview
+bun src/cli.ts apply  # place
 ```
 
-Stale-link cleanup only removes symlinks whose target points back into this
-repo's `skills/` directory. Hand-authored real directories in any target are
-never overwritten.
+The former `./link-skills.sh` was retired once skm reached placement parity
+(gate awareness, hermes add-only, stale-link pruning are covered by
+`cli/test`).
 
 ### `bash maintenance/sync-agents-md.sh`
 
@@ -336,14 +337,14 @@ Current local skills:
 `to-prd` and `linear-yeet` were retired 2026-07 (frontier agents produce
 PRDs and drive the Linear MCP natively); `split-to-prs`, an exact fork of
 the Cursor app's shipped skill, moved to the private overlay root. Gated
-local skills are skipped by `link-skills.sh` and placed per-agent by `skm`
+local skills are never placed in shared roots; `skm` renders them per-agent
 (ADR 0011).
 
 To add a new local skill:
 
 1. Create `skills/<name>/SKILL.md`
 2. Add frontmatter with `name` and `description`
-3. Run `./link-skills.sh` or `./install-repro-skills.sh`
+3. Run `skm plan` / `skm apply` (from `cli/`, via `bun`)
 
 ## Tests
 
@@ -351,7 +352,6 @@ Run the shell test scripts directly:
 
 ```bash
 bash maintenance/test-install-repro-skills.sh
-bash maintenance/test-link-skills.sh
 bash maintenance/test-deploy-project-skills.sh
 bash maintenance/test-agents-md.sh
 ```
