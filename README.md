@@ -30,6 +30,10 @@ its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 > sync` and `skm deploy` replace them (`skm` still shells to the external
 > `skills` CLI as the fetch/place engine).
 
+![Skills Manager review console showing the public plan-reviewer agent rendered for Codex across clean cross-harness placements](docs/assets/review-console-public.png)
+
+*Public-only review artifact generated from this repository.*
+
 It also supports an optional gitignored personal overlay file for extra global
 skills, per-family additions, and custom project families.
 
