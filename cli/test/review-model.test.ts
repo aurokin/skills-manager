@@ -228,6 +228,13 @@ describe("review model", () => {
     const huge = files.find((f) => f.path === "huge.md");
     expect(huge?.content).toContain("[truncated: 90006 bytes total]");
     expect((huge?.content.length ?? 0)).toBeLessThan(90_000);
+
+    // registerDoc must survive the same tree: the inventoried skill keeps its
+    // doc despite the dangling link and cycle inside it.
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const entry = shared?.entries.find((e) => e.name === "plain-skill");
+    expect(entry?.doc).toBeDefined();
+    expect(model.docs[entry!.doc!]?.skill).toContain("plain body");
   });
 
   test("model is stable across runs (modulo clock)", async () => {

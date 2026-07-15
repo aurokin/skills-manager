@@ -202,11 +202,28 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
         let text = fs.readFileSync(skillMd, "utf8");
         if (text.length > DOC_CAP) text = `${text.slice(0, DOC_CAP)}\n… [truncated]`;
         const files: string[] = [];
+        const visited = new Set<string>();
         const walk = (dir: string, base: string) => {
+          // Same hardening as listTree: cycle guard on real paths, and a
+          // broken entry skips itself instead of dropping the whole doc.
+          let realDir: string;
+          try {
+            realDir = fs.realpathSync(dir);
+          } catch {
+            return;
+          }
+          if (visited.has(realDir)) return;
+          visited.add(realDir);
           for (const f of fs.readdirSync(dir).sort()) {
             if (f.startsWith(".")) continue;
             const p = path.join(dir, f);
-            if (fs.statSync(p).isDirectory()) walk(p, `${base}${f}/`);
+            let st: fs.Stats;
+            try {
+              st = fs.statSync(p);
+            } catch {
+              continue;
+            }
+            if (st.isDirectory()) walk(p, `${base}${f}/`);
             else if (`${base}${f}` !== "SKILL.md") files.push(`${base}${f}`);
             if (files.length > DOC_FILE_LIST_CAP) {
               files.push("…");
@@ -315,7 +332,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
         files: isDir(p.path)
           ? listTree(p.path)
           : isFile(p.path)
-            ? [{ path: path.basename(p.path), content: fs.readFileSync(p.path, "utf8") }]
+            ? [{ path: path.basename(p.path), content: readCapped(p.path, fs.statSync(p.path).size) }]
             : [],
         deployed,
       });

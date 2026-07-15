@@ -36,6 +36,17 @@ describe("loadCatalogSpecs", () => {
     expect(Object.keys(specs.bySkillName)).toEqual(["skill-a"]);
   });
 
+  test("accepts multi-segment repo paths like the bash validator", () => {
+    const r = root("pub");
+    fs.writeFileSync(
+      path.join(r.path, "catalog", "global-specs.txt"),
+      "cursor/plugins/thermos@thermos\nno-slash-at-all\n",
+    );
+    const specs = loadCatalogSpecs([r]);
+    expect(specs.specs).toHaveLength(1);
+    expect(specs.bySkillName["thermos"]).toBe("cursor/plugins/thermos");
+  });
+
   test("loads families with their spec files", () => {
     const r = root("pub");
     fs.writeFileSync(path.join(r.path, "catalog", "families.tsv"), "demo\tDemo family\n");
