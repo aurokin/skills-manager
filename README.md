@@ -86,7 +86,6 @@ the standard set defined in `lib/agents.sh`:
 - `gemini-cli`
 - `github-copilot`
 - `claude-code`
-- `droid`
 
 Override the list to scope a run to a subset of agents, or to opt into
 additional agents like Hermes (see below).
@@ -258,6 +257,12 @@ changing the curated catalog. The file is gitignored; start from
 `.skills.local.json.example`. The example file uses placeholder exclusions, so
 copying it does not opt you out of curated skills until you replace those
 values intentionally.
+
+This gitignored `.skills.local.json` is only a quick-tweak layer for the bash
+scripts' upstream/family sets — it is **not** the private overlay repo. Private
+skills and agent definitions live in a separate registered overlay root (a real
+repo, resolved by `skm`); see
+[ADR 0001](docs/adr/0001-overlay-repo-architecture.md).
 
 Supported keys:
 

@@ -31,6 +31,14 @@ managed by the user's dotfiles if desired.
 | [0004](adr/0004-first-party-frontmatter-rendering.md) | Claude Code, Codex, Copilot are first-party: per-agent rendered frontmatter in their private dirs; shared-dir content leans Codex |
 | [0005](adr/0005-machine-registry-in-xdg-config.md) | Machine-local registry in `~/.config/skills-manager/`; no per-host layering in v1 |
 | [0006](adr/0006-plan-apply-ownership-state.md) | Terraform-style `plan`/`apply`, exit codes 0/1/2, ownership state file, delete-only-what-we-own |
+| [0007](adr/0007-agent-definitions-artifact-type.md) | Agent definitions become a second artifact type; `custom_agents` absorbed |
+| [0008](adr/0008-tprompt-export.md) | tprompt export as a generic prompt-export channel for agents and skills |
+| [0009](adr/0009-dialect-document-emitter-rendering.md) | Rendering is dialect → document AST → emitter; byte quirks live only in emitters |
+| [0010](adr/0010-composed-skills-artifact-type.md) | Composed skills: per-consumer rendered skills with a build matrix and posture |
+| [0011](adr/0011-user-invoked-only-skill-gating.md) | User-invoked-only skills: intent declared once, gate translated per agent |
+| [0012](adr/0012-shared-provider-pools.md) | Shared provider pools: multiple composed skills from one provider source |
+| [0013](adr/0013-skm-review.md) | `skm review` verb for the skill-surface console |
+| [0015](adr/0015-machine-local-override-roots.md) | Machine-local override roots disable an agent definition per host via an `export: none` stub |
 
 ## 3. Architecture overview
 
@@ -281,10 +289,13 @@ skm apply    [--json] [--plan f] [--prune] [--yes]
 skm status   [--json]              # desired vs state vs disk; drift classes
 skm doctor   [--json] [--fix]      # leaks, broken links, registry contradictions,
                                    # deny-guarantee verification, env-var suggestions
+skm review   [--json] [--out f]    # skill-surface review: self-contained HTML page (or --json model)
 skm explain  <skill> [--json]      # source root, scoping, placements, visibility/bleed
 skm root     add|list|remove <path>
-skm deploy   <family> <dir> [...]  # project families (port of deploy-project-skills.sh)
 ```
+
+Project-family deploys are **not** a skm verb yet: they remain the bash
+`deploy-project-skills.sh` path until migration phase 6 completes (§10).
 
 Conventions (ADR 0006): `plan` never mutates; `apply --plan` executes
 exactly the reviewed plan; exit codes 0/1/2; `--json` on every verb;
@@ -311,28 +322,32 @@ knows how to operate the system.
 ## 10. Migration and sequencing
 
 Each phase lands as an independent PR with tests; bash behavior
-(`maintenance/test-*.sh`) is the contract until parity.
+(`maintenance/test-*.sh`) is the contract until parity. Status markers below
+reflect what has shipped; [cli/README.md](../cli/README.md)'s "Relationship to
+the bash scripts" section is the authoritative current-status note. (ADR 0014,
+separate work, re-scopes phases 6/7.)
 
-1. **Registry + read-only core** — `registry/agents.json` generated from §4
+1. **Registry + read-only core** *(done)* — `registry/agents.json` generated from §4
    with citations; TypeScript `plan`/`status` running against the *current*
    layout (validates resolver + registry with zero mutation risk).
-2. **Ownership state + `apply`** — adopt existing installs into state on
+2. **Ownership state + `apply`** *(done)* — adopt existing installs into state on
    first run; ownership-aware prune replaces readlink heuristics and the
    Hermes special case.
-3. **Scoped placement (R1)** — read-graph solver, missing-dir creation,
+3. **Scoped placement (R1)** *(done)* — read-graph solver, missing-dir creation,
    deny verification in `doctor`; first real scoped skills (drive-codex /
    drive-claude / drive-copilot).
-4. **Overlays (R2)** — machine config, overlay manifest, missing-root
+4. **Overlays (R2)** *(done)* — machine config, overlay manifest, missing-root
    abort, privacy guards; create the private repo with its own AGENTS.md
    pointing back at this engine.
-5. **Rendering (first-party polish)** — `agents/*.yaml` overrides, rendered
+5. **Rendering (first-party polish)** *(done)* — `agents/*.yaml` overrides, rendered
    placements, `modified` detection.
-6. **Retire bash** — port `deploy-project-skills.sh` families, delete
-   scripts, convert bash tests to golden `plan --json` tests.
-7. **Scoped upstream vendoring** — the store/pinning path (deferred until a
+6. **Retire bash** *(partial)* — port `deploy-project-skills.sh` families, delete
+   scripts, convert bash tests to golden `plan --json` tests. Local-skill
+   placement and drift are ported; project families still run on bash.
+7. **Scoped upstream vendoring** *(deferred)* — the store/pinning path (deferred until a
    real scoped-upstream need appears; canonical R1 examples are
    locally-authored).
-8. **Agent definitions + tprompt export** — absorb `custom_agents` as a
+8. **Agent definitions + tprompt export** *(done)* — absorb `custom_agents` as a
    second artifact type and generalize its tprompt harness into a prompt
    export channel for skills too. Decisions: ADR 0007 / ADR 0008; plan:
    [agents-import-plan.md](agents-import-plan.md).
