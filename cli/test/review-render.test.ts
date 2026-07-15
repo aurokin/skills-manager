@@ -2,6 +2,7 @@
 // review-model.test.ts; here we cover injection escaping, the docs budget, the
 // default/`--out` write paths, and the privacy guard — not pixel-level UI.
 
+import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -37,7 +38,8 @@ describe("review HTML render", () => {
 
     const written = path.join(stateHome(sb.env), "skills-manager", "review.html");
     expect(fs.existsSync(written)).toBe(true);
-    expect((outcome.json as { path: string }).path).toBe(written);
+    // The verb reports the REAL destination (parent symlinks resolved).
+    expect(fs.realpathSync((outcome.json as { path: string }).path)).toBe(fs.realpathSync(written));
 
     const html = fs.readFileSync(written, "utf8");
     // Escaped model JSON is embedded in the data block.
@@ -65,6 +67,31 @@ describe("review HTML render", () => {
     const tildeOutcome = await runReview(sb.env, { ...PLAIN_OPTS, out: "~/tilde-review.html" });
     expect(tildeOutcome.exitCode).toBe(0);
     expect(fs.existsSync(path.join(sb.home, "tilde-review.html"))).toBe(true);
+  });
+
+  test("a symlinked destination cannot smuggle the page past the privacy guard", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill", { body: "plain body" });
+    writeMachineConfig(sb, {
+      version: 1,
+      roots: [root],
+      agents: ["claude-code"],
+      privateOriginAllowlist: [],
+    });
+    await runApply(sb.env, APPLY_OPTS);
+
+    // Non-allowlisted worktree; an innocent-looking --out target is a DANGLING
+    // symlink into it (writeFileSync would follow it and create the file there).
+    const wt = path.join(sb.base, "secret-wt");
+    fs.mkdirSync(wt, { recursive: true });
+    execFileSync("git", ["-C", wt, "init", "-q"]);
+    execFileSync("git", ["-C", wt, "remote", "add", "origin", "git@github.com:someone/secret.git"]);
+    const target = path.join(sb.base, "innocent.html");
+    fs.symlinkSync(path.join(wt, "review.html"), target);
+
+    const outcome = await runReview(sb.env, { ...PLAIN_OPTS, out: target });
+    expect(outcome.exitCode).toBe(1);
+    expect(fs.existsSync(path.join(wt, "review.html"))).toBe(false);
   });
 
   test("docs budget drops the largest doc with a marker, leaving the total under budget", () => {
