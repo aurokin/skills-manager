@@ -104,6 +104,17 @@ describe("review HTML render", () => {
     const deep = await runReview(sb.env, { ...PLAIN_OPTS, out: path.join(chainDir, "link45") });
     expect(deep.exitCode).toBe(1);
     expect(fs.existsSync(path.join(wt, "review.html"))).toBe(false);
+
+    // Symlinked ANCESTOR with a not-yet-created subdir: mkdirSync would follow
+    // the link, so the guard must resolve the existing ancestor first.
+    const linkDir = path.join(sb.base, "linkdir");
+    fs.symlinkSync(wt, linkDir);
+    const viaAncestor = await runReview(sb.env, {
+      ...PLAIN_OPTS,
+      out: path.join(linkDir, "sub", "review.html"),
+    });
+    expect(viaAncestor.exitCode).toBe(1);
+    expect(fs.existsSync(path.join(wt, "sub"))).toBe(false);
   });
 
   test("docs budget drops the largest doc with a marker, leaving the total under budget", () => {

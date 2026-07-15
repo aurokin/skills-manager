@@ -25,11 +25,20 @@ function resolveDestination(p: string): string | undefined {
       st = undefined as unknown as fs.Stats;
     }
     if (!st || !st.isSymbolicLink()) {
-      try {
-        return path.join(fs.realpathSync(path.dirname(cur)), path.basename(cur));
-      } catch {
-        // Parent does not exist yet (fresh state dir): created before the write.
-        return cur;
+      // Realpath the nearest EXISTING ancestor and reattach the missing
+      // suffix: mkdirSync would follow a symlinked ancestor, so the guard
+      // must see where the new directories actually get created.
+      let dir = path.dirname(cur);
+      let suffix = path.basename(cur);
+      for (;;) {
+        try {
+          return path.join(fs.realpathSync(dir), suffix);
+        } catch {
+          const parent = path.dirname(dir);
+          if (parent === dir) return cur;
+          suffix = path.join(path.basename(dir), suffix);
+          dir = parent;
+        }
       }
     }
     cur = path.resolve(path.dirname(cur), fs.readlinkSync(cur));
