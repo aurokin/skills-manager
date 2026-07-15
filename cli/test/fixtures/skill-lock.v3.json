@@ -1,0 +1,42 @@
+{
+  "version": 3,
+  "skills": {
+    "openai-docs": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/openai/skills.git",
+      "skillPath": "skills/.curated/openai-docs/SKILL.md",
+      "skillFolderHash": "4a774545829d91404b3615f8f71011a1ed857e92",
+      "installedAt": "2026-04-19T20:58:52.764Z",
+      "updatedAt": "2026-06-09T02:58:28.950Z"
+    },
+    "pdf": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/openai/skills.git",
+      "skillPath": "skills/.curated/pdf/SKILL.md",
+      "skillFolderHash": "4cffaac4541278a5b142f9773e8a83ccbabc9231",
+      "installedAt": "2026-04-19T20:58:53.015Z",
+      "updatedAt": "2026-04-19T20:58:53.015Z"
+    },
+    "github": {
+      "source": "openclaw/openclaw",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/openclaw/openclaw.git",
+      "skillPath": "skills/github/SKILL.md",
+      "skillFolderHash": "fab34dc9cb22cd950c4c8b3772df2000a7741b87",
+      "installedAt": "2026-07-13T21:57:10.178Z",
+      "updatedAt": "2026-07-13T21:57:10.178Z"
+    },
+    "terminal-control": {
+      "source": "kitlangton/terminal-control",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/kitlangton/terminal-control.git",
+      "skillPath": "skills/terminal-control/SKILL.md",
+      "skillFolderHash": "a1cd114e830ac8bbd2a557f55395ec06d80cd5e2",
+      "installedAt": "2026-07-15T02:19:54.823Z",
+      "updatedAt": "2026-07-15T02:19:54.823Z"
+    }
+  },
+  "dismissed": {}
+}

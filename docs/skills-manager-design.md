@@ -341,10 +341,17 @@ separate work, re-scopes phases 6/7.)
    pointing back at this engine.
 5. **Rendering (first-party polish)** *(done)* — `agents/*.yaml` overrides, rendered
    placements, `modified` detection.
-6. **Retire bash** *(partial)* — port `deploy-project-skills.sh` families, delete
-   scripts, convert bash tests to golden `plan --json` tests. Local-skill
-   placement and drift are ported; project families still run on bash.
-7. **Scoped upstream vendoring** *(deferred)* — the store/pinning path (deferred until a
+6. **Retire bash** *(partial; re-scoped by
+   [ADR 0014](adr/0014-upstream-sync-absorption.md))* — port
+   `deploy-project-skills.sh` families; script deletion is deferred to
+   ADR 0014's phase-4 parity gate (post-cutover soak, deletion as its own
+   commit), then bash tests convert to golden `plan --json` tests.
+   Local-skill placement and drift are ported; project families still run
+   on bash.
+7. **Scoped upstream vendoring** *(deferred; re-scoped by
+   [ADR 0014](adr/0014-upstream-sync-absorption.md) — unscoped sync absorbed
+   as `skm upstream sync`, true vendoring still deferred)* — the store/pinning
+   path (deferred until a
    real scoped-upstream need appears; canonical R1 examples are
    locally-authored).
 8. **Agent definitions + tprompt export** *(done)* — absorb `custom_agents` as a
