@@ -1,6 +1,6 @@
 # ADR 0014: absorbing upstream sync and family deploys into `skm`
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-07-14
 - Depends on: [ADR 0006](0006-plan-apply-ownership-state.md) (state,
   delete-only-what-we-own), [ADR 0013](0013-skm-review.md) (review console,

@@ -19,6 +19,7 @@ design and the research behind these).
 | [0011](0011-user-invoked-only-skill-gating.md) | User-invoked-only skills: intent declared once, gate translated per agent | accepted |
 | [0012](0012-shared-provider-pools.md) | Shared provider pools: multiple composed skills from one provider source | accepted |
 | [0013](0013-skm-review.md) | `skm review` verb for the skill-surface console | accepted |
+| [0014](0014-upstream-sync-absorption.md) | Absorb upstream sync + family deploys into `skm`; lock-attested review provenance | accepted |
 | [0015](0015-machine-local-override-roots.md) | Machine-local override roots disable an agent definition per host via an `export: none` stub | accepted |
 
 Convention: new ADRs take the next number, one decision per file, statuses
