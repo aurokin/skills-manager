@@ -80,10 +80,17 @@ until migration phase 6/7, they are absent from the ownership state, and
 `catalog/global-specs.txt`. Rather than let the review model re-parse
 catalogs inline (the prototype's sin), phase 1 adds a small read-only
 specs loader to the engine (`cli/src/catalog-specs.ts`: global specs,
-overlay catalogs, families) used by the review model to attribute
-catalog-known `foreign` entries as `upstream · <owner>/<repo>`. It is
-attribution only — sync stays with bash; the loader is the natural first
-brick of the phase-7 vendoring path.
+overlay catalogs, families). One honesty rule governs its use: **catalog
+specs are desired state, not installation evidence.** A name-match
+cannot prove where a directory came from (a manual install shadowing a
+catalog name would be misattributed, and repo-wide specs without
+`@skill-name` don't enumerate names at all). The model field is
+therefore `catalogSpec` — "matches curated entry `<owner>/<repo>`" — and
+the page labels it as catalog expectation, never as verified origin.
+Verified origin requires real installation metadata (the `skills` CLI's
+own records, or skm's state once phase-7 vendoring lands) and is
+explicitly deferred to that path. Sync stays with bash; the loader is
+the natural first brick of phase 7.
 
 **Editorial notes are authored data, not view strings.** The prototype's
 per-unit prose ("byte-for-byte fork of the Cursor app's shipped skill…")
