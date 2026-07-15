@@ -7,10 +7,10 @@ import * as path from "node:path";
 import { loadCatalogSpecs } from "../catalog-specs";
 import type { SkmContext } from "../context";
 import { type SkmEnv, expandTilde } from "../env";
-import { computeDesiredPlacements } from "../placements";
+import { computeDesiredPlacements, type DesiredPlacement } from "../placements";
 import { renderComposedSkill } from "../composed/render";
 import { computeDrift } from "../status";
-import type { DesiredPlacement, DriftClass, Posture } from "../types";
+import type { DriftClass, Posture } from "../types";
 
 export interface ReviewFile {
   path: string;
@@ -81,7 +81,6 @@ export interface ReviewModel {
   docs: Record<string, { skill: string; files: string[] }>;
 }
 
-const DOC_CAP = 80_000;
 const DOC_FILE_LIST_CAP = 60;
 const FILE_CAP = 80_000;
 
@@ -200,8 +199,8 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       if (!fs.existsSync(skillMd)) return undefined;
       const key = tilde(env, real);
       if (!docs[key]) {
-        let text = fs.readFileSync(skillMd, "utf8");
-        if (text.length > DOC_CAP) text = `${text.slice(0, DOC_CAP)}\n… [truncated]`;
+        // Bounded read: the cap must hold BEFORE allocation, not after.
+        const text = readCapped(skillMd, fs.statSync(skillMd).size);
         const files: string[] = [];
         const visited = new Set<string>();
         const walk = (dir: string, base: string) => {
