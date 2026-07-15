@@ -39,6 +39,7 @@ export function parseArgs(argv: string[]): ParsedInvocation {
   let fix = false;
   let planFile: string | undefined;
   let agentsHome: string | undefined;
+  let out: string | undefined;
   const args: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -78,12 +79,22 @@ export function parseArgs(argv: string[]): ParsedInvocation {
       const value = a.slice("--agents-home=".length);
       if (value === "") throw new UsageError("--agents-home requires a directory path");
       agentsHome = value;
+    } else if (a === "--out") {
+      const value = argv[++i];
+      if (value === undefined || value.startsWith("-")) {
+        throw new UsageError("--out requires a file path");
+      }
+      out = value;
+    } else if (a.startsWith("--out=")) {
+      const value = a.slice("--out=".length);
+      if (value === "") throw new UsageError("--out requires a file path");
+      out = value;
     }
     else if (a.startsWith("-")) throw new UsageError(`unknown flag: ${a}`);
     else args.push(a);
   }
 
-  return { verb, opts: { json, prune, yes, planFile, fix, agentsHome, args } };
+  return { verb, opts: { json, prune, yes, planFile, fix, agentsHome, out, args } };
 }
 
 const USAGE = `skm — skills manager (local skills placement engine)
@@ -93,7 +104,7 @@ Usage:
   skm apply   [--json] [--plan <f>] [--prune] [--yes]
   skm status  [--json]                     drift: missing|stale|modified|foreign|unsafe
   skm doctor  [--json] [--fix]             leaks, broken links, deny-guarantee checks
-  skm review  [--json]                     skill-surface review model (ADR 0013; HTML in phase 2)
+  skm review  [--json] [--out <f>]         skill-surface review: HTML page (or --json model)
   skm explain <skill> [--json]             source, scoping, placements, bleed
   skm adopt   custom-agents [--agents-home <dir>]  take ownership of manifest agent-def files
   skm root    add|list|remove [<path>]     edit machine config roots

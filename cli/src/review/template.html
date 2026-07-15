@@ -1,0 +1,795 @@
+<meta charset="utf-8">
+<title>Skill Review — agent surface</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #F7F8F6; --panel: #EFF1EE; --panel-2: #E6E9E5; --ink: #1E2522;
+    --ink-2: #55605B; --ink-3: #8A948F; --line: #D8DDD8;
+    --accent: #0E7A5F; --accent-soft: #0E7A5F1A;
+    --gated: #A9660C; --gated-soft: #A9660C16;
+    --render: #6B5E8C; --render-soft: #6B5E8C1A;
+    --danger: #C0392B; --danger-soft: #C0392B1A;
+    --code-bg: #EDF0EC; --fm-bg: #E9EEE9; --sel: #0E7A5F2E;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+    --ui: "Avenir Next", "Seravek", "Segoe UI", system-ui, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131816; --panel: #191F1C; --panel-2: #202724; --ink: #E2E8E4;
+      --ink-2: #9FAAA4; --ink-3: #6C7772; --line: #2A322E;
+      --accent: #43C79A; --accent-soft: #43C79A22;
+      --gated: #E0A050; --gated-soft: #E0A05022;
+      --render: #A99BD1; --render-soft: #A99BD122;
+      --danger: #E06C5A; --danger-soft: #E06C5A22;
+      --code-bg: #1A211E; --fm-bg: #1C2521; --sel: #43C79A33;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #F7F8F6; --panel: #EFF1EE; --panel-2: #E6E9E5; --ink: #1E2522;
+    --ink-2: #55605B; --ink-3: #8A948F; --line: #D8DDD8;
+    --accent: #0E7A5F; --accent-soft: #0E7A5F1A;
+    --gated: #A9660C; --gated-soft: #A9660C16;
+    --render: #6B5E8C; --render-soft: #6B5E8C1A;
+    --danger: #C0392B; --danger-soft: #C0392B1A;
+    --code-bg: #EDF0EC; --fm-bg: #E9EEE9; --sel: #0E7A5F2E;
+  }
+  :root[data-theme="dark"] {
+    --bg: #131816; --panel: #191F1C; --panel-2: #202724; --ink: #E2E8E4;
+    --ink-2: #9FAAA4; --ink-3: #6C7772; --line: #2A322E;
+    --accent: #43C79A; --accent-soft: #43C79A22;
+    --gated: #E0A050; --gated-soft: #E0A05022;
+    --render: #A99BD1; --render-soft: #A99BD122;
+    --danger: #E06C5A; --danger-soft: #E06C5A22;
+    --code-bg: #1A211E; --fm-bg: #1C2521; --sel: #43C79A33;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font-family: var(--ui); font-size: 14px; line-height: 1.45; }
+  ::selection { background: var(--sel); }
+
+  .app { display: grid; grid-template-columns: 268px 1fr; height: 100vh; }
+
+  /* ── unit sidebar ── */
+  .side { border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  .side-head { padding: 18px 16px 12px; border-bottom: 1px solid var(--line); }
+  .side-head h1 { margin: 0; font-size: 15px; font-weight: 600; }
+  .side-head .sub { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); margin-top: 3px; }
+  .filter { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .filter input {
+    width: 100%; padding: 6px 9px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 12px;
+  }
+  .filter input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .tree { overflow-y: auto; flex: 1; padding: 6px 0 18px; }
+  .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); padding: 14px 16px 5px; font-weight: 600; }
+  .unit-btn {
+    display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 16px;
+    border: 0; background: none; color: var(--ink); font-family: var(--mono);
+    font-size: 12.5px; text-align: left; cursor: pointer; border-left: 3px solid transparent;
+  }
+  .unit-btn:hover { background: var(--panel-2); }
+  .unit-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .unit-btn.active { background: var(--accent-soft); border-left-color: var(--accent); }
+  .unit-btn .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .unit-btn .meta { font-size: 10px; color: var(--ink-3); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; align-self: center; }
+  .dot.gated { background: var(--gated); }
+  .dot.composed { background: var(--render); }
+  .dot.plain { background: var(--ink-3); }
+  .dot.inv { background: var(--accent); }
+  .dot.drift { background: var(--gated); box-shadow: 0 0 0 3px var(--gated-soft); }
+  .side-foot { padding: 10px 16px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+  /* ── main ── */
+  .main { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  .main-head { padding: 14px 26px 12px; border-bottom: 1px solid var(--line); }
+  .title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .title-row h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.01em; }
+  .badge {
+    font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
+    padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-2);
+  }
+  .badge.gated { color: var(--gated); border-color: var(--gated); background: var(--gated-soft); }
+  .badge.composed, .badge.agent { color: var(--render); border-color: var(--render); background: var(--render-soft); }
+  .badge.private { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .note { color: var(--ink-2); font-size: 13px; max-width: 78ch; margin: 8px 0 0; }
+  .variant-row { display: flex; align-items: center; gap: 14px; margin: 12px 0 0; flex-wrap: wrap; }
+  .variant-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); font-weight: 600; }
+  .deploy-row { gap: 8px; }
+  .deploy-row .chip { cursor: default; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button {
+    border: 0; background: var(--panel); color: var(--ink-2); cursor: pointer;
+    font-family: var(--mono); font-size: 11.5px; padding: 5px 13px; border-right: 1px solid var(--line);
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { color: var(--ink); }
+  .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .seg button.on { background: var(--accent); color: var(--bg); font-weight: 600; }
+  .seg button.on.render-on { background: var(--render); }
+  .variant-root { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+  /* ── posture switch ── */
+  .posture-ctl { display: inline-flex; align-items: center; gap: 7px; }
+  .posture-ctl .pl {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--ink-3); cursor: pointer; background: none; border: 0; padding: 2px 0;
+  }
+  .posture-ctl .pl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .posture-ctl .pl.on { font-weight: 700; }
+  .posture-ctl .pl.on.sandboxed { color: var(--accent); }
+  .posture-ctl .pl.on.yolo { color: var(--gated); }
+  .pswitch {
+    width: 40px; height: 20px; border-radius: 99px; border: 1px solid var(--line);
+    background: var(--accent-soft); position: relative; cursor: pointer; padding: 0; flex: none;
+  }
+  .pswitch::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: var(--accent);
+  }
+  .pswitch[aria-checked="true"] { background: var(--gated-soft); }
+  .pswitch[aria-checked="true"]::after { left: 22px; background: var(--gated); }
+  .pswitch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (prefers-reduced-motion: no-preference) { .pswitch::after { transition: left .15s ease, background .15s ease; } }
+
+  .chip { font-family: var(--mono); font-size: 10px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink-3); white-space: nowrap; }
+  .chip.preview { color: var(--render); border-color: var(--render); background: var(--render-soft); }
+  .chip.pdiff { color: var(--render); border-color: var(--render); background: var(--render-soft); }
+  /* deployed-status chips: one distinct color per drift class */
+  .chip.st-clean { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .chip.st-missing { color: var(--danger); border-color: var(--danger); background: var(--danger-soft); font-weight: 700; }
+  .chip.st-modified { color: var(--gated); border-color: var(--gated); background: var(--gated-soft); font-weight: 700; }
+  .chip.st-stale { color: var(--render); border-color: var(--render); background: var(--render-soft); font-weight: 700; }
+  .chip.st-foreign { color: var(--ink-3); border-color: var(--ink-3); background: transparent; }
+  .chip.st-unsafe { color: var(--bg); border-color: var(--danger); background: var(--danger); font-weight: 700; }
+  .ghost-ctl { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); cursor: pointer; user-select: none; }
+  .ghost-ctl input { accent-color: var(--render); margin: 0; }
+  .kbd-hint { font-family: var(--mono); font-size: 10px; color: var(--ink-3); margin-left: 2px; }
+  .kbd-hint kbd { border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-family: inherit; }
+
+  /* ── matrix map ── */
+  .mmap { display: inline-grid; gap: 3px; margin-left: auto; align-self: start; }
+  .mmap .mtop, .mmap .mlabel {
+    font-family: var(--mono); font-size: 9px; color: var(--ink-3);
+    text-transform: uppercase; letter-spacing: .06em; align-self: center;
+  }
+  .mmap .mtop { text-align: center; }
+  .mmap .mlabel { text-align: right; padding-right: 5px; }
+  .mmap .mcell {
+    font-family: var(--mono); font-size: 9.5px; padding: 2.5px 9px; border: 1px solid var(--line);
+    border-radius: 5px; background: var(--panel); color: var(--ink-2); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px; justify-content: center;
+  }
+  .mmap .mcell:hover { background: var(--panel-2); }
+  .mmap .mcell:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .mmap .mcell.sel { outline: 2px solid var(--render); outline-offset: -1px; color: var(--ink); font-weight: 600; }
+  .mmap .mcell .dd { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); flex: none; }
+  .mmap .mcell .dd.drift { background: var(--gated); }
+
+  /* ── file-tree rail + content ── */
+  .body-split { display: grid; grid-template-columns: 250px 1fr; flex: 1; min-height: 0; }
+  .filetree {
+    border-right: 1px solid var(--line); overflow-y: auto; padding: 12px 0 24px;
+    background: color-mix(in srgb, var(--panel) 55%, var(--bg));
+  }
+  .ft-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); padding: 2px 14px 6px; font-weight: 600; }
+  .ft-dir { font-family: var(--mono); font-size: 11px; color: var(--ink-3); padding: 7px 14px 2px; }
+  .ft-file {
+    display: flex; align-items: baseline; gap: 7px; width: 100%; border: 0; background: none;
+    color: var(--ink); font-family: var(--mono); font-size: 11.5px; text-align: left;
+    cursor: pointer; padding: 3.5px 14px; border-left: 3px solid transparent;
+  }
+  .ft-file.nested { padding-left: 26px; }
+  .ft-file:hover { background: var(--panel-2); }
+  .ft-file:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .ft-file.active { border-left-color: var(--accent); background: var(--accent-soft); }
+  .ft-file .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ft-file .wc { font-size: 9.5px; color: var(--ink-3); }
+  .ft-file .pd { font-size: 9.5px; white-space: nowrap; }
+  .ft-file .pd .plus.sandboxed { color: var(--accent); }
+  .ft-file .pd .plus.yolo { color: var(--gated); }
+  .ft-file .pd .minus { color: var(--ink-3); }
+
+  .scroller { overflow-y: auto; min-height: 0; padding: 0 26px 80px; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { .scroller { scroll-behavior: auto; } }
+
+  .file { margin-top: 26px; scroll-margin-top: 8px; }
+  .file-head {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 10px;
+    background: var(--bg); padding: 8px 0 6px; border-bottom: 2px solid var(--accent);
+  }
+  .file-head .path { font-family: var(--mono); font-size: 13px; font-weight: 700; }
+  .file-head .wc { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
+
+  .src { font-family: var(--mono); font-size: 12.75px; line-height: 1.62; padding: 14px 0 6px; max-width: 96ch; }
+  .src .ln { white-space: pre-wrap; overflow-wrap: anywhere; min-height: 1.2em; }
+  .src .h1, .src .h2, .src .h3 { font-weight: 700; color: var(--accent); }
+  .src .h1 { font-size: 14.5px; }
+  .src .h2 { font-size: 13.5px; }
+  .src .fm { background: var(--fm-bg); border-left: 3px solid var(--render); padding-left: 10px; margin-left: -13px; }
+  .src .code { background: var(--code-bg); border-left: 3px solid var(--line); padding-left: 10px; margin-left: -13px; }
+  .src .fence { color: var(--ink-3); }
+  .src .quote { color: var(--ink-2); font-style: italic; }
+  .src .tbl { color: var(--ink-2); }
+  /* posture tinting: exclusive lines in compiled cells; posture blocks in source lens.
+     .pk after .fm/.code so posture wins the left border on overlap. */
+  .src .pk { margin-left: -13px; padding-left: 10px; border-left: 3px solid; }
+  .src .pk.sandboxed { border-left-color: var(--accent); background: var(--accent-soft); }
+  .src .pk.yolo { border-left-color: var(--gated); background: var(--gated-soft); }
+  .src .ghost { opacity: .5; border-left-style: dashed; }
+  .src .ghost-tag {
+    font-size: 9px; text-transform: uppercase; letter-spacing: .06em;
+    padding: 0 5px; border-radius: 4px; margin-right: 7px; border: 1px solid;
+  }
+  .src .ghost-tag.sandboxed { color: var(--accent); border-color: var(--accent); }
+  .src .ghost-tag.yolo { color: var(--gated); border-color: var(--gated); }
+  .src .pmark { color: var(--ink-3); font-size: 11px; }
+  .src .dim { opacity: .4; }
+
+  /* ── inventory ── */
+  .inv-dir { margin-top: 28px; scroll-margin-top: 8px; }
+  .inv-dir h3 {
+    margin: 0 0 2px; font-size: 14px; font-weight: 600; font-family: var(--mono);
+    padding-bottom: 6px; border-bottom: 2px solid var(--accent);
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .inv-dir h3 .count { margin-left: auto; font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+  .inv-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 12px; margin-top: 6px; }
+  .inv-table td { padding: 4.5px 10px 4.5px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+  .inv-table td.name { font-weight: 600; white-space: nowrap; width: 1%; padding-right: 22px; }
+  .inv-table td.prov { color: var(--ink-2); font-size: 11px; }
+  .pv { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 7px; vertical-align: baseline; }
+  .pv.public { background: var(--accent); }
+  .pv.private { background: var(--gated); }
+  .pv.rendered { background: var(--render); }
+  .pv.upstream { background: var(--ink-3); }
+  .pv.link, .pv.dir, .pv.file { background: var(--line); }
+  .pv.broken { background: var(--danger); }
+  .inv-legend { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); margin-top: 10px; }
+  .inv-table tr.has-doc { cursor: pointer; }
+  .inv-table tr.has-doc:hover td { background: var(--accent-soft); }
+  .inv-caret { display: inline-block; width: 13px; color: var(--ink-3); font-size: 8.5px; transition: transform .12s; }
+  tr.doc-open .inv-caret { transform: rotate(90deg); }
+  .inv-doc td { padding: 0 0 18px; border-bottom: 1px solid var(--line); }
+  .inv-doc-body {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 6px;
+    margin-top: 8px; padding: 14px 16px; max-height: 62vh; overflow: auto;
+  }
+  .inv-doc-body pre {
+    margin: 0; white-space: pre-wrap; word-break: break-word;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.55;
+  }
+  .inv-doc-files { margin-top: 12px; padding-top: 9px; border-top: 1px dashed var(--line); font-size: 10.5px; color: var(--ink-2); }
+
+  .empty { color: var(--ink-3); padding: 60px 0; text-align: center; font-family: var(--mono); font-size: 13px; }
+
+  @media (max-width: 960px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; height: auto; }
+    .side { max-height: 38vh; }
+    body { height: auto; }
+    .body-split { grid-template-columns: 1fr; }
+    .filetree { display: none; }
+    .scroller { padding: 0 14px 60px; }
+    .main-head { padding: 12px 14px 10px; }
+    .mmap { display: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .unit-btn, .seg button, .ft-file, .mmap .mcell { transition: background .12s ease, color .12s ease; }
+  }
+</style>
+
+<div class="app">
+  <nav class="side">
+    <div class="side-head">
+      <h1>Skill Review</h1>
+      <div class="sub" id="built"></div>
+    </div>
+    <div class="filter">
+      <input id="q" type="search" placeholder="filter name or text…" aria-label="Filter skills" />
+    </div>
+    <div class="tree" id="tree"></div>
+    <div class="side-foot" id="totals"></div>
+  </nav>
+  <main class="main">
+    <div class="main-head" id="head"></div>
+    <div class="body-split">
+      <nav class="filetree" id="filetree" aria-label="Files"></nav>
+      <div class="scroller" id="content"></div>
+    </div>
+  </main>
+</div>
+
+<script type="application/json" id="review-model">__MODEL_JSON__</script>
+<script>
+const DATA = JSON.parse(document.getElementById("review-model").textContent);
+
+const $ = (s, r) => (r || document).querySelector(s);
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const words = (s) => (s.match(/\S+/g) || []).length;
+const slug = (p) => "f-" + p.replace(/[^\w]/g, "-");
+const INV_ID = "__inventory__";
+
+const STATUS_LABEL = { clean: "on disk", missing: "missing", stale: "stale", modified: "modified", foreign: "foreign", unsafe: "unsafe" };
+const shortPath = (p) => p.split("/").slice(-2).join("/");
+function statusChip(dep) {
+  if (!dep) return "";
+  const label = STATUS_LABEL[dep.status] || dep.status;
+  const dot = dep.status === "clean" ? "● " : "";
+  const title = dep.path + (dep.detail ? " — " + dep.detail : "");
+  return `<span class="chip st-${esc(dep.status)}" title="${esc(title)}">${dot}${esc(label)}</span>`;
+}
+
+// cur.consumer: "source" or a consumer key (matrix units); cur.variant for plain units.
+let cur = { unit: INV_ID, variant: "source", consumer: "source", posture: "yolo", ghosts: false };
+let observer = null;
+
+const otherPosture = (mx, p) => mx.postures.find((x) => x !== p);
+const unitById = (id) => DATA.units.find((x) => x.id === id);
+
+// ── posture line-diff (LCS), computed in-page from the two compiled cells.
+// Phase 3 (ADR 0013) moves this into the model; phase 2 keeps it here.
+function lineDiff(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const exA = new Set();
+  const ghostsForA = [];
+  let i = 0, j = 0, pending = [], lastA = -1;
+  const flush = () => { if (pending.length) { ghostsForA.push({ after: lastA, lines: pending }); pending = []; } };
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { flush(); lastA = i; i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { flush(); exA.add(i); lastA = i; i++; }
+    else { pending.push(b[j]); j++; }
+  }
+  while (i < n) { flush(); exA.add(i); lastA = i; i++; }
+  while (j < m) { pending.push(b[j]); j++; }
+  flush();
+  return { exA, ghostsForA };
+}
+const toRanges = (set) => {
+  const idx = [...set].sort((x, y) => x - y);
+  const out = [];
+  for (const k of idx) {
+    const last = out[out.length - 1];
+    if (last && k === last[0] + last[1]) last[1]++;
+    else out.push([k, 1]);
+  }
+  return out;
+};
+const diffCache = new Map();
+function cellDiff(u, consumer, posture, filePath) {
+  const key = `${u.id} ${consumer} ${posture} ${filePath}`;
+  if (diffCache.has(key)) return diffCache.get(key);
+  const mx = u.matrix;
+  const otherP = otherPosture(mx, posture);
+  const thisF = mx.cells[`${consumer}|${posture}`].files.find((f) => f.path === filePath);
+  const otherCell = mx.cells[`${consumer}|${otherP}`];
+  const otherF = otherCell ? otherCell.files.find((f) => f.path === filePath) : null;
+  const la = thisF.content.split("\n");
+  const lb = otherF ? otherF.content.split("\n") : [];
+  const d = lineDiff(la, lb);
+  const res = { ex: toRanges(d.exA), ghosts: d.ghostsForA };
+  diffCache.set(key, res);
+  return res;
+}
+
+// ── unit sidebar ──
+function hasDrift(u) {
+  return (u.placements || []).some((p) => p.status !== "clean");
+}
+function dotClass(u) {
+  if (hasDrift(u)) return "drift";
+  if (u.badges.includes("gated")) return "gated";
+  if (u.badges.includes("composed") || u.badges.includes("agent")) return "composed";
+  return "plain";
+}
+function unitMatches(u, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  if (u.name.toLowerCase().includes(q)) return true;
+  if (u.variants.some((v) => v.files.some((f) => f.content.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)))) return true;
+  if (u.matrix) {
+    for (const cell of Object.values(u.matrix.cells))
+      if (cell.files.some((f) => f.content.toLowerCase().includes(q) || f.path.toLowerCase().includes(q))) return true;
+  }
+  return false;
+}
+function renderTree() {
+  const q = $("#q").value.trim();
+  const tree = $("#tree");
+  tree.innerHTML = "";
+
+  const invLbl = document.createElement("div");
+  invLbl.className = "group-label"; invLbl.textContent = "Inventory";
+  tree.appendChild(invLbl);
+  const invBtn = document.createElement("button");
+  invBtn.className = "unit-btn" + (cur.unit === INV_ID ? " active" : "");
+  const invCount = DATA.inventory.reduce((n, d) => n + d.entries.length, 0);
+  invBtn.innerHTML = `<span class="dot inv"></span><span class="n">installed right now</span><span class="meta">${invCount}</span>`;
+  invBtn.onclick = () => { cur = { ...cur, unit: INV_ID }; renderAll(); };
+  tree.appendChild(invBtn);
+
+  const groups = [...new Set(DATA.units.map((u) => u.group))];
+  for (const g of groups) {
+    const units = DATA.units.filter((u) => u.group === g && unitMatches(u, q));
+    if (!units.length) continue;
+    const lbl = document.createElement("div");
+    lbl.className = "group-label"; lbl.textContent = g;
+    tree.appendChild(lbl);
+    for (const u of units) {
+      const b = document.createElement("button");
+      b.className = "unit-btn" + (u.id === cur.unit ? " active" : "");
+      const nFiles = u.variants[0].files.length;
+      const nVar = u.matrix ? Object.keys(u.matrix.cells).length + 1 : u.variants.length;
+      if (hasDrift(u)) b.title = "a deployed placement drifts from what skm would render";
+      b.innerHTML = `<span class="dot ${dotClass(u)}"></span><span class="n">${esc(u.name)}</span>` +
+        `<span class="meta">${nFiles}f${nVar > 1 ? " · " + nVar + "v" : ""}</span>`;
+      b.onclick = () => {
+        const posture = u.matrix ? u.matrix.sourcePosture : cur.posture;
+        cur = { unit: u.id, variant: "source", consumer: "source", posture, ghosts: false };
+        renderAll();
+      };
+      tree.appendChild(b);
+    }
+  }
+  const totalFiles = DATA.units.reduce((n, u) => n + u.variants.reduce((m, v) => m + v.files.length, 0), 0);
+  const totalWords = DATA.units.reduce((n, u) => n + u.variants[0].files.reduce((m, f) => m + words(f.content), 0), 0);
+  $("#totals").textContent = `${DATA.units.length} units · ${totalFiles} files · ${totalWords.toLocaleString()} source words`;
+}
+
+// ── source line classifier (+ posture annotations) ──
+// ann = null                                                     plain file
+// ann = { mode:"cell", posture, otherP, exSet, ghosts, ghostsOn } compiled matrix cell
+// ann = { mode:"lens", posture }                                  source with posture-block lens
+function renderSource(text, ann) {
+  const lines = text.split("\n");
+
+  let blockOf = null;
+  if (ann && ann.mode === "lens") {
+    blockOf = new Array(lines.length).fill(null);
+    let fence = false, open = null;
+    lines.forEach((ln, i) => {
+      if (/^ {0,3}(`{3,}|~{3,})/.test(ln)) { fence = !fence; if (open) blockOf[i] = { p: open, marker: false }; return; }
+      if (!fence) {
+        const pm = /^<!--\s*@posture\s+(\S+)\s*-->\s*$/.exec(ln);
+        if (pm) { open = pm[1]; blockOf[i] = { p: open, marker: true }; return; }
+        if (/^<!--\s*@end\s*-->\s*$/.test(ln) && open) { blockOf[i] = { p: open, marker: true }; open = null; return; }
+      }
+      if (open) blockOf[i] = { p: open, marker: false };
+    });
+  }
+
+  const ghostsAt = {};
+  if (ann && ann.mode === "cell" && ann.ghostsOn) {
+    for (const g of ann.ghosts) (ghostsAt[g.after] ??= []).push(...g.lines);
+  }
+  const out = [];
+  const pushGhosts = (gl) => {
+    gl.forEach((g, i) => {
+      const tag = i === 0 ? `<span class="ghost-tag ${esc(ann.otherP)}">only in ${esc(ann.otherP)}</span>` : "";
+      out.push(`<div class="ln pk ghost ${esc(ann.otherP)}">${tag}${esc(g) || " "}</div>`);
+    });
+  };
+  if (ghostsAt[-1]) pushGhosts(ghostsAt[-1]);
+
+  let inFm = false, inCode = false;
+  lines.forEach((ln, i) => {
+    let cls = "ln";
+    if (i === 0 && ln === "---") { inFm = true; cls += " fm fence"; }
+    else if (inFm) { cls += " fm"; if (ln === "---") { inFm = false; cls += " fence"; } }
+    else if (/^```/.test(ln)) { cls += " code fence"; inCode = !inCode; }
+    else if (inCode) cls += " code";
+    else if (/^# /.test(ln)) cls += " h1";
+    else if (/^## /.test(ln)) cls += " h2";
+    else if (/^###+ /.test(ln)) cls += " h3";
+    else if (/^> /.test(ln)) cls += " quote";
+    else if (/^\|/.test(ln)) cls += " tbl";
+
+    if (ann && ann.mode === "cell" && ann.exSet.has(i)) cls += ` pk ${ann.posture}`;
+    if (blockOf && blockOf[i]) {
+      const b = blockOf[i];
+      cls += ` pk ${esc(b.p)}`;
+      if (b.marker) cls += " pmark";
+      if (b.p !== ann.posture) cls += " dim";
+    }
+    out.push(`<div class="${cls}">${esc(ln) || " "}</div>`);
+    if (ghostsAt[i]) pushGhosts(ghostsAt[i]);
+  });
+  return `<div class="src">${out.join("")}</div>`;
+}
+
+// ── file-tree rail ──
+function renderFiletree(files, decorate) {
+  const ft = $("#filetree");
+  const rows = ['<div class="ft-label">Files</div>'];
+  let lastDir = "";
+  files.forEach((f) => {
+    const slash = f.path.lastIndexOf("/");
+    const dir = slash === -1 ? "" : f.path.slice(0, slash);
+    const base = slash === -1 ? f.path : f.path.slice(slash + 1);
+    if (dir !== lastDir) { if (dir) rows.push(`<div class="ft-dir">${esc(dir)}/</div>`); lastDir = dir; }
+    rows.push(
+      `<button class="ft-file${dir ? " nested" : ""}" data-target="${slug(f.path)}">` +
+      `<span class="n">${esc(base)}</span>${decorate ? decorate(f) : ""}<span class="wc">${words(f.content)}w</span></button>`
+    );
+  });
+  ft.innerHTML = rows.join("");
+  ft.querySelectorAll(".ft-file").forEach((b) => {
+    b.onclick = () => {
+      document.getElementById(b.dataset.target)?.scrollIntoView({ block: "start" });
+      setActive(b.dataset.target);
+    };
+  });
+}
+function setActive(id) {
+  document.querySelectorAll(".ft-file").forEach((b) => b.classList.toggle("active", b.dataset.target === id));
+}
+function watchSections() {
+  if (observer) observer.disconnect();
+  const sections = [...document.querySelectorAll(".file, .inv-dir")];
+  if (!sections.length) return;
+  observer = new IntersectionObserver((entries) => {
+    const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (vis.length) setActive(vis[0].target.id);
+  }, { root: $("#content"), rootMargin: "0px 0px -70% 0px" });
+  sections.forEach((s) => observer.observe(s));
+}
+
+/** Re-render the body while pinning scroll to the active section (posture flips
+    must not teleport the reader — same file, same relative offset). */
+function rerenderPinned(render) {
+  const content = $("#content");
+  const activeId = document.querySelector(".ft-file.active")?.dataset.target;
+  const sec = activeId ? document.getElementById(activeId) : null;
+  const delta = sec ? content.scrollTop - sec.offsetTop : content.scrollTop;
+  render();
+  const prev = content.style.scrollBehavior;
+  content.style.scrollBehavior = "auto";
+  const s2 = activeId ? document.getElementById(activeId) : null;
+  if (s2) {
+    content.scrollTop = s2.offsetTop + Math.max(0, Math.min(delta, Math.max(0, s2.offsetHeight - 40)));
+    setActive(activeId);
+  } else {
+    content.scrollTop = Math.min(delta, content.scrollHeight);
+  }
+  content.style.scrollBehavior = prev;
+  watchSections();
+}
+
+// ── inventory view ──
+function renderInventory() {
+  const invCount = DATA.inventory.reduce((n, d) => n + d.entries.length, 0);
+  $("#head").innerHTML =
+    `<div class="title-row"><h2>Installed right now</h2><span class="badge">${invCount} skills</span></div>` +
+    `<p class="note">Every skill present in every registered agent skill directory on ${esc(DATA.machine)} at build time. ` +
+    `Symlinks are resolved to their origin; rendered dirs are skm-owned per-agent builds. Click a row to read its SKILL.md.</p>` +
+    `<div class="inv-legend"><span><span class="pv public"></span>ours · public root</span>` +
+    `<span><span class="pv private"></span>ours · private root</span>` +
+    `<span><span class="pv rendered"></span>skm-rendered</span>` +
+    `<span><span class="pv upstream"></span>catalog-expected</span>` +
+    `<span><span class="pv broken"></span>broken link</span></div>`;
+
+  const ft = $("#filetree");
+  ft.innerHTML = '<div class="ft-label">Directories</div>' + DATA.inventory.map((d) =>
+    `<button class="ft-file" data-target="inv-${esc(d.id)}"><span class="n">${esc(d.id)}</span><span class="wc">${d.entries.length}</span></button>`
+  ).join("");
+  ft.querySelectorAll(".ft-file").forEach((b) => {
+    b.onclick = () => { document.getElementById(b.dataset.target)?.scrollIntoView({ block: "start" }); setActive(b.dataset.target); };
+  });
+
+  $("#content").innerHTML = DATA.inventory.map((d) =>
+    `<section class="inv-dir" id="inv-${esc(d.id)}">` +
+    `<h3>${esc(d.id)} <span style="color:var(--ink-3);font-weight:400">${esc(d.path)}</span><span class="count">${d.entries.length} skills</span></h3>` +
+    `<table class="inv-table">` + d.entries.map((e) => {
+      const hasDoc = e.doc && DATA.docs[e.doc];
+      const drift = e.drift && e.drift.status !== "clean" ? " " + statusChip(e.drift) : "";
+      return `<tr class="${hasDoc ? "has-doc" : ""}"${hasDoc ? ` data-doc="${esc(e.doc)}"` : ""}>` +
+        `<td class="name"><span class="inv-caret">${hasDoc ? "▶" : ""}</span><span class="pv ${esc(e.kind)}"></span>${esc(e.name)}</td>` +
+        `<td class="prov">${esc(e.label)}${drift}</td></tr>`;
+    }).join("") + `</table></section>`
+  ).join("");
+  $("#content").querySelectorAll("tr.has-doc").forEach((tr) => {
+    tr.onclick = () => {
+      const next = tr.nextElementSibling;
+      if (next && next.classList.contains("inv-doc")) { next.remove(); tr.classList.remove("doc-open"); return; }
+      const d = DATA.docs[tr.dataset.doc];
+      const row = document.createElement("tr");
+      row.className = "inv-doc";
+      row.innerHTML = `<td colspan="2"><div class="inv-doc-body"><pre>${esc(d.skill)}</pre>` +
+        (d.files.length ? `<div class="inv-doc-files">also in this skill: ${d.files.map(esc).join(" · ")}</div>` : "") +
+        `</div></td>`;
+      tr.classList.add("doc-open");
+      tr.after(row);
+    };
+  });
+  $("#content").scrollTop = 0;
+  watchSections();
+}
+
+// ── matrix bar (composed units): consumer seg + posture switch + status + map ──
+function matrixBar(u) {
+  const mx = u.matrix;
+  const isSource = cur.consumer === "source";
+
+  const seg = `<span class="variant-label">Consumer</span><span class="seg" id="cseg">` +
+    `<button class="${isSource ? "on" : ""}" data-c="source">Source</button>` +
+    mx.consumers.map((c) =>
+      `<button class="${cur.consumer === c.key ? "on render-on" : ""}" data-c="${esc(c.key)}">${esc(c.key)}</button>`
+    ).join("") + `</span>`;
+
+  const yolo = cur.posture === "yolo";
+  const psw = `<span class="posture-ctl"><span class="variant-label">Posture</span>` +
+    `<button class="pl ${!yolo ? "on sandboxed" : ""}" data-p="sandboxed">sandboxed</button>` +
+    `<button class="pswitch" role="switch" aria-checked="${yolo}" aria-label="Posture: ${esc(cur.posture)}" id="psw"></button>` +
+    `<button class="pl ${yolo ? "on yolo" : ""}" data-p="yolo">yolo</button></span>`;
+
+  let chip = "", rootLine;
+  if (isSource) {
+    rootLine = `${esc(u.variants[0].root)} · lens: the other posture's blocks are dimmed`;
+  } else {
+    const c = mx.consumers.find((x) => x.key === cur.consumer);
+    const dep = c && c.deployed;
+    const deployedHere = !!dep && cur.posture === mx.sourcePosture;
+    if (deployedHere && dep.status === "clean") {
+      chip = statusChip(dep);
+      rootLine = esc(dep.path);
+    } else if (deployedHere) {
+      chip = statusChip(dep);
+      rootLine = `${esc(dep.path)} — deployed tree is ${esc(STATUS_LABEL[dep.status] || dep.status)}${dep.detail ? " · " + esc(dep.detail) : ""}`;
+    } else {
+      chip = `<span class="chip preview">compiled preview</span>`;
+      rootLine = `compiled in-memory by the real renderer · not deployed at this posture`;
+    }
+  }
+
+  const ghost = !isSource
+    ? `<label class="ghost-ctl"><input type="checkbox" id="gh" ${cur.ghosts ? "checked" : ""}/> ghost dropped lines</label>`
+    : "";
+  const hint = `<span class="kbd-hint"><kbd>p</kbd> posture · <kbd>c</kbd> consumer</span>`;
+
+  // matrix map: rows = consumers, cols = postures; dot = deployed cell
+  const mcells = mx.consumers.map((c) =>
+    `<span class="mlabel">${esc(c.key)}</span>` + mx.postures.map((p) => {
+      const cell = mx.cells[`${c.key}|${p}`];
+      const wc = cell.files.reduce((n, f) => n + words(f.content), 0);
+      const sel = cur.consumer === c.key && cur.posture === p;
+      const deployed = !!c.deployed && p === mx.sourcePosture;
+      const drift = deployed && c.deployed.status !== "clean";
+      return `<button class="mcell ${sel ? "sel" : ""}" data-mc="${esc(c.key)}" data-mp="${esc(p)}"` +
+        ` title="${esc(c.key)} × ${esc(p)}${deployed ? " (" + esc(STATUS_LABEL[c.deployed.status] || c.deployed.status) + ")" : ""}">` +
+        `${deployed ? `<span class="dd${drift ? " drift" : ""}"></span>` : ""}${wc}w</button>`;
+    }).join("")
+  ).join("");
+  const mmap = `<span class="mmap" style="grid-template-columns: auto repeat(${mx.postures.length}, auto);">` +
+    `<span></span>` + mx.postures.map((p) => `<span class="mtop">${esc(p)}</span>`).join("") + mcells + `</span>`;
+
+  return `<div class="variant-row">${seg}${psw}${chip}${ghost}${mmap}</div>` +
+    `<div class="variant-row"><span class="variant-root">${rootLine}</span>${hint}</div>`;
+}
+
+function wireMatrixBar(u) {
+  const head = $("#head");
+  head.querySelectorAll("#cseg button").forEach((b) => {
+    b.onclick = () => { if (cur.consumer !== b.dataset.c) { cur.consumer = b.dataset.c; renderHeadOnly(u); rerenderPinned(() => renderUnitBody(u)); } };
+  });
+  const flip = (p) => { cur.posture = p; renderHeadOnly(u); rerenderPinned(() => renderUnitBody(u)); };
+  const psw = $("#psw");
+  if (psw) psw.onclick = () => flip(cur.posture === "yolo" ? "sandboxed" : "yolo");
+  head.querySelectorAll(".pl").forEach((b) => { b.onclick = () => { if (b.dataset.p !== cur.posture) flip(b.dataset.p); }; });
+  const gh = $("#gh");
+  if (gh) gh.onchange = () => { cur.ghosts = gh.checked; rerenderPinned(() => renderUnitBody(u)); };
+  head.querySelectorAll(".mcell").forEach((b) => {
+    b.onclick = () => { cur.consumer = b.dataset.mc; cur.posture = b.dataset.mp; renderHeadOnly(u); rerenderPinned(() => renderUnitBody(u)); };
+  });
+}
+
+// ── unit rendering ──
+function currentFiles(u) {
+  if (u.matrix && cur.consumer !== "source") return u.matrix.cells[`${cur.consumer}|${cur.posture}`].files;
+  const v = u.matrix ? u.variants[0] : u.variants.find((x) => x.key === cur.variant) || u.variants[0];
+  return v.files;
+}
+
+function deployRow(u) {
+  if (!u.placements || !u.placements.length) return "";
+  const chips = u.placements.map((p) =>
+    `<span class="chip st-${esc(p.status)}" title="${esc(p.path + (p.detail ? " — " + p.detail : ""))}">` +
+    `${esc(shortPath(p.path))} · ${esc(STATUS_LABEL[p.status] || p.status)}</span>`
+  ).join("");
+  return `<div class="variant-row deploy-row"><span class="variant-label">Deployed</span>${chips}</div>`;
+}
+
+function renderHeadOnly(u) {
+  const badges = u.badges.map((b) => `<span class="badge ${esc(b)}">${esc(b)}</span>`).join("");
+  let controls;
+  if (u.matrix) {
+    controls = matrixBar(u);
+  } else {
+    const v = u.variants.find((x) => x.key === cur.variant) || u.variants[0];
+    cur.variant = v.key;
+    const seg = u.variants.length > 1
+      ? `<span class="variant-label">Variant</span><span class="seg">` +
+        u.variants.map((x) =>
+          `<button class="${x.key === v.key ? "on" + (x.key !== "source" ? " render-on" : "") : ""}" data-v="${esc(x.key)}">${esc(x.label)}</button>`
+        ).join("") + `</span>`
+      : "";
+    controls = `<div class="variant-row">${seg}<span class="variant-root">${esc(v.root)}</span>${v.deployed ? statusChip(v.deployed) : ""}</div>`;
+  }
+  $("#head").innerHTML =
+    `<div class="title-row"><h2>${esc(u.name)}</h2>${badges}</div>` +
+    (u.note ? `<p class="note">${esc(u.note)}</p>` : "") + deployRow(u) + controls;
+  if (u.matrix) wireMatrixBar(u);
+  else $("#head").querySelectorAll(".seg button").forEach((b) => {
+    b.onclick = () => { cur.variant = b.dataset.v; renderAll(); };
+  });
+}
+
+function renderUnitBody(u) {
+  const files = currentFiles(u);
+  const inCell = !!u.matrix && cur.consumer !== "source";
+  const inLens = !!u.matrix && cur.consumer === "source";
+
+  const decorate = inCell
+    ? (f) => {
+        const { ex, ghosts } = cellDiff(u, cur.consumer, cur.posture, f.path);
+        const plus = ex.reduce((n, r) => n + r[1], 0);
+        const minus = ghosts.reduce((n, g) => n + g.lines.length, 0);
+        if (!plus && !minus) return "";
+        return `<span class="pd"><span class="plus ${esc(cur.posture)}">+${plus}</span><span class="minus">/−${minus}</span></span>`;
+      }
+    : null;
+  renderFiletree(files, decorate);
+
+  $("#content").innerHTML = files.length
+    ? files.map((f) => {
+        let ann = null, chips = "";
+        if (inCell) {
+          const { ex, ghosts } = cellDiff(u, cur.consumer, cur.posture, f.path);
+          const exSet = new Set();
+          for (const [start, len] of ex) for (let k = 0; k < len; k++) exSet.add(start + k);
+          ann = { mode: "cell", posture: cur.posture, otherP: otherPosture(u.matrix, cur.posture), exSet, ghosts, ghostsOn: cur.ghosts };
+          if (exSet.size || ghosts.length) chips = `<span class="chip pdiff">differs by posture</span>`;
+        } else if (inLens && /<!--\s*@posture/.test(f.content)) {
+          ann = { mode: "lens", posture: cur.posture };
+          chips = `<span class="chip pdiff">posture blocks</span>`;
+        }
+        return `<section class="file" id="${slug(f.path)}">` +
+          `<div class="file-head"><span class="path">${esc(f.path)}</span>${chips}` +
+          `<span class="wc">${words(f.content)} words · ${f.content.split("\n").length} lines</span></div>` +
+          renderSource(f.content, ann) +
+          `</section>`;
+      }).join("")
+    : `<div class="empty">no files</div>`;
+}
+
+function renderAll() {
+  renderTree();
+  if (cur.unit === INV_ID) { renderInventory(); return; }
+  const u = unitById(cur.unit);
+  renderHeadOnly(u);
+  renderUnitBody(u);
+  $("#content").scrollTop = 0;
+  watchSections();
+}
+
+// keyboard: p = flip posture, c = cycle consumer (matrix units only, not while typing)
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (cur.unit === INV_ID) return;
+  const u = unitById(cur.unit);
+  if (!u || !u.matrix) return;
+  if (e.key === "p") {
+    cur.posture = cur.posture === "yolo" ? "sandboxed" : "yolo";
+    renderHeadOnly(u); rerenderPinned(() => renderUnitBody(u));
+  } else if (e.key === "c") {
+    const order = ["source", ...u.matrix.consumers.map((c) => c.key)];
+    cur.consumer = order[(order.indexOf(cur.consumer) + 1) % order.length];
+    renderHeadOnly(u); rerenderPinned(() => renderUnitBody(u));
+  }
+});
+
+$("#built").textContent = `built ${DATA.built} · ${DATA.machine}`;
+$("#q").addEventListener("input", renderTree);
+renderAll();
+</script>

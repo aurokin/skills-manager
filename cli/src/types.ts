@@ -655,6 +655,8 @@ export interface VerbOptions {
   fix: boolean;
   /** Legacy in-repo agents_home for `adopt custom-agents` (--agents-home). */
   agentsHome?: string;
+  /** `review --out <path>`: explicit HTML output path (privacy-guarded). */
+  out?: string;
   /** Positional args (e.g. `explain <skill>`, `root add <path>`). */
   args: string[];
 }
