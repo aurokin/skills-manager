@@ -68,6 +68,12 @@ export interface ReviewUnit {
   id: string;
   group: string;
   name: string;
+  /** Source-root visibility (additive; drives the Visibility grouping view). */
+  visibility: "public" | "private";
+  /** Source-root NAME from machine config (e.g. "public", "private", "local-root").
+   *  Native/composed/agent-def: the defining root. Pool: the pool's root. A disabled
+   *  agent def carries the override stub's root (the effective definition). */
+  sourceRoot: string;
   badges: string[];
   note?: string;
   variants: ReviewVariant[];
@@ -333,6 +339,8 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       id: `${visibility}-${skill.name}`,
       group,
       name: skill.name,
+      visibility,
+      sourceRoot: skill.source.root,
       badges,
       note: skillReviewNote(skill.source.path),
       variants,
@@ -366,6 +374,8 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       id: `composed-${skill.name}`,
       group: "Composed skills",
       name: skill.name,
+      visibility: skill.source.visibility,
+      sourceRoot: skill.source.root,
       badges: ["composed", skill.posture],
       variants: [
         { key: "source", label: "Source", root: tilde(env, skill.source.path), files: listTree(skill.source.path) },
@@ -385,6 +395,8 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       id: `pool-${root.name}`,
       group: "Composed skills",
       name: `${PROVIDER_POOL_DIR} (shared pool, ${root.name})`,
+      visibility: root.visibility,
+      sourceRoot: root.name,
       badges: [root.visibility, "pool"],
       variants: [{ key: "source", label: "Source", root: tilde(env, poolDir), files }],
       placements: [],
@@ -447,6 +459,8 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       id: `agent-${def.name}`,
       group: "Agent definitions",
       name: def.name,
+      visibility: def.source.visibility,
+      sourceRoot: def.source.root,
       badges: disabled ? ["agent", "disabled"] : ["agent", def.exportMode],
       note,
       variants,

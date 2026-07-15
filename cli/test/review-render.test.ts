@@ -149,4 +149,28 @@ describe("review HTML render", () => {
     expect(html).toContain("plain-skill");
     expect(html).toContain(".agents/skills");
   });
+
+  test("page ships the Group by toggle and the model's visibility/sourceRoot survive injection", async () => {
+    const root = makeRoot(sb, "vault", "private");
+    makeSkill(root.path, "priv-skill", { body: "private body" });
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const html = renderReviewHtml(model);
+
+    // The visibility-grouping toggle markup is present.
+    expect(html).toContain('id="groupby"');
+    expect(html).toContain('data-g="visibility"');
+    expect(html).toContain("Group by");
+
+    // The additive model fields round-trip through the escaped data block.
+    const json = html.split('id="review-model">')[1]!.split("</script>")[0]!;
+    const parsed = JSON.parse(
+      json.replace(/\\u003c/g, "<").replace(/\\u003e/g, ">").replace(/\\u0026/g, "&"),
+    );
+    const unit = parsed.units.find((u: { name: string }) => u.name === "priv-skill");
+    expect(unit.visibility).toBe("private");
+    expect(unit.sourceRoot).toBe("vault");
+  });
 });
