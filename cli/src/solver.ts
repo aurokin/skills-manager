@@ -268,7 +268,15 @@ function renderKind(skill: DesiredSkill, dir: string): Placement["kind"] {
   return "symlink";
 }
 
-/** Unscoped: shared covers the shared-readers; claude and hermes need their own dirs. */
+/**
+ * Unscoped: shared covers the shared-readers; claude, antigravity, and hermes do NOT
+ * read the shared dir, so each needs its own-dir placement. These are enumerated
+ * explicitly (rather than derived from "every non-shared reader") to preserve the
+ * existing narrow contract — grok also skips shared but is deliberately reached only
+ * through maybeReads, not an own-dir unscoped placement. antigravity's dialect is
+ * `spec` (no per-agent frontmatter render), and agy follows a symlinked skill folder
+ * in its own dir (probe 2026-07-15), so its placement is a symlink like the others.
+ */
 function solveUnscoped(
   skill: DesiredSkill,
   registry: Registry,
@@ -289,6 +297,14 @@ function solveUnscoped(
       kind: skill.overrides.claude ? "rendered" : "symlink",
     },
   ];
+  if (enabled.includes("antigravity")) {
+    placements.push({
+      agent: "antigravity",
+      dir: "antigravity",
+      path: path.join(registry.directories.antigravity!.path, name),
+      kind: "symlink",
+    });
+  }
   if (enabled.includes("hermes")) {
     placements.push({
       agent: "hermes",

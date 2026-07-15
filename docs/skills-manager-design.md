@@ -88,7 +88,7 @@ The machine-readable registry derived from this table lives at
 | **cursor** (cursor-agent) | `~/.agents/skills`, `~/.cursor/skills`, `~/.claude/skills`, `~/.codex/skills` (compat) | Yes | `~/.cursor/skills` | docs |
 | **grok** | `~/.grok/skills`, config `[skills] paths` | **Ambiguous** in docs | `~/.grok/skills` | docs (flagged) |
 | **droid** | `~/.factory/skills`, `~/.agents/skills` | **Yes** — user-verified on-machine 2026-07-10; Factory docs lag and list only `~/.factory/skills` | `~/.factory/skills` | user-verified + docs |
-| **antigravity** | `~/.gemini/config/skills` (all variants); variant-specific extras | No evidence (home level) | `~/.gemini/config/skills` | docs (flagged, variant-inconsistent) |
+| **antigravity** | `~/.gemini/config/skills` (own; CLI + 2.0 app), legacy `~/.gemini/skills` (CLI), `~/.gemini/antigravity-cli/skills` (CLI appDataDir) | **No** (confirmed) | `~/.gemini/config/skills` | empirical probe of agy v1.1.2 (2026-07-15) + docs antigravity.google/docs/skills |
 | **hermes** | `~/.hermes/skills`, config `skills.external_dirs` | No | `~/.hermes/skills` (add-only policy retained) | source (clone 2026-05) |
 | **aider** | — | No | — (`skills-support: none`) | source (clone 2026-05) |
 
@@ -100,10 +100,28 @@ grok-compat), `.codex/skills` (codex, cursor), `.factory/skills` and
 (copilot), `.gemini/skills` (gemini), `.pi/skills` (pi), `.grok/skills`
 (grok), `.hermes/skills` (hermes).
 
-Symlink handling: codex, claude-code, opencode, pi, hermes, gemini-cli
-confirmed to follow symlinked skill dirs (source or docs); others
+Symlink handling: codex, claude-code, opencode, pi, hermes, gemini-cli,
+antigravity confirmed to follow symlinked skill dirs (source, docs, or
+empirical probe — antigravity verified 2026-07-15: a symlinked folder in
+`~/.gemini/config/skills` surfaced in `agy --print`'s skill list); others
 undocumented — the registry records `symlinks: unknown` and `doctor` can
 probe empirically.
+
+Antigravity has **no skill-gating mechanism** — SKILL.md frontmatter is
+`name` (optional) + `description` (required) only; there is no
+`disable-model-invocation` equivalent (permissions gate tools, not skills).
+It is therefore a no-gate agent (ADR 0011): unscoped and allow-scoped local
+skills place into `~/.gemini/config/skills` (as symlinks, verified above),
+but **gated skills are never placed for it**.
+
+Antigravity **agent definitions ride the gemini-cli render**: `agy agents`
+discovers both `~/.gemini/agents/` and `~/.gemini/config/agents/` (empirical
+2026-07-15), and skm's existing gemini render at `~/.gemini/agents/*.md` is
+discovered by `agy` as-is. The registry marks antigravity
+`agentDefSupport: supported` with `agentDefVia: gemini-cli` and **no own
+render channel** — rendering a second copy would make every definition appear
+twice in `agy agents`. There is deliberately no `antigravity` agent-def
+dialect or harness keyword.
 
 ### Corrections to prior assumptions
 

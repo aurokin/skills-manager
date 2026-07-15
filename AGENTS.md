@@ -1,6 +1,6 @@
 ## Purpose
 
-This repo manages a curated set of agent skills (for Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, optionally Hermes) and agent definitions via these mechanisms:
+This repo manages a curated set of agent skills (for Claude Code, Codex, OpenCode, Gemini CLI, GitHub Copilot, Antigravity, optionally Hermes) and agent definitions via these mechanisms:
 1. **Upstream skills** installed globally from GitHub repos using the `skills` CLI
 2. **Local skills** in `skills/` symlinked into `~/.agents/skills` and `~/.claude/skills`
 3. **Agent definitions** in `agents/` (one `agent.yaml` + `instructions.md` per subagent), rendered per-harness by `skm` into each agent's definitions dir (`~/.claude/agents/*.md`, `~/.codex/agents/*.toml`, `~/.copilot/agents/*.agent.md`, `~/.cursor/agents/*.md`, `~/.gemini/agents/*.md`, `~/.config/opencode/agent/*.md`)

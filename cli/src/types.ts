@@ -86,8 +86,17 @@ export interface AgentCapability {
   agentDefSupport?: AgentDefSupport;
   /** User-global agent-definition dir (may contain a leading `~`). Present iff supported. */
   agentDefDir?: string;
-  /** File format/flavor of that directory. Present iff supported. */
+  /** File format/flavor of that directory. Present iff supported with an own render channel. */
   agentDefDialect?: AgentDefDialect;
+  /**
+   * Agent id whose existing render serves this agent's definitions instead of a
+   * dedicated render channel. When set, agentDefSupport is "supported" but the agent
+   * declares NO agentDefDir/agentDefDialect and skm never renders a separate copy for
+   * it (antigravity rides gemini-cli's ~/.gemini/agents render — both dirs are read by
+   * agy, so a second render would surface every agent twice). Mutually exclusive with
+   * agentDefDir/agentDefDialect.
+   */
+  agentDefVia?: string;
   /** Evidence citation for the agent-definition support decision. */
   agentDefEvidence?: string;
   // ── Skill-invocation gating capability (ADR 0011). ──

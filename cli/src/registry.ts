@@ -51,6 +51,20 @@ export function validateRegistry(reg: Registry): void {
     validateAgentDef(agentId, agent);
     validateSkillInvocation(agentId, agent);
   }
+
+  // agentDefVia cross-check (runs after the per-agent pass so all ids are known): a
+  // served-via agent (e.g. antigravity → gemini-cli) must name a REAL agent-def
+  // renderer, so the claimed support is delivered by a channel that actually renders.
+  for (const [agentId, agent] of Object.entries(reg.agents)) {
+    const via = agent.agentDefVia;
+    if (via === undefined) continue;
+    const target = reg.agents[via];
+    if (!target || target.agentDefSupport !== "supported" || !target.agentDefDir || !target.agentDefDialect) {
+      throw new RegistryError(
+        `agent '${agentId}' agentDefVia '${via}' must reference an agent with its own agent-definition render channel (agentDefSupport 'supported' + agentDefDir + agentDefDialect)`,
+      );
+    }
+  }
 }
 
 const AGENT_DEF_SUPPORT_VALUES = new Set(["supported", "none", "unknown"]);
@@ -66,8 +80,9 @@ function validateAgentDef(agentId: string, agent: AgentCapability): void {
   const support = agent.agentDefSupport;
   const hasDir = agent.agentDefDir !== undefined;
   const hasDialect = agent.agentDefDialect !== undefined;
+  const hasVia = agent.agentDefVia !== undefined;
   const hasEvidence = agent.agentDefEvidence !== undefined;
-  const anyField = support !== undefined || hasDir || hasDialect || hasEvidence;
+  const anyField = support !== undefined || hasDir || hasDialect || hasVia || hasEvidence;
   if (!anyField) return;
 
   if (support !== undefined && !AGENT_DEF_SUPPORT_VALUES.has(support)) {
@@ -80,9 +95,28 @@ function validateAgentDef(agentId: string, agent: AgentCapability): void {
     throw new RegistryError(`agent '${agentId}' agentDefDir must be a non-empty string`);
   }
   if (support === "none" || support === "unknown") {
+    if (hasDir || hasDialect || hasVia) {
+      throw new RegistryError(
+        `agent '${agentId}' agentDefSupport '${support}' must not declare agentDefDir, agentDefDialect, or agentDefVia`,
+      );
+    }
+  } else if (hasVia) {
+    // Served via another harness's render (e.g. antigravity rides gemini-cli's
+    // ~/.gemini/agents render): support MUST be an explicit "supported" (a served-via
+    // alias with omitted/absent support is incoherent — downstream reads the source as
+    // unsupported while the alias claims coverage), and it declares NO own render
+    // channel, so it must not declare its own dir/dialect (that would duplicate-render).
+    if (support !== "supported") {
+      throw new RegistryError(
+        `agent '${agentId}' declares agentDefVia but agentDefSupport is not 'supported'`,
+      );
+    }
+    if (typeof agent.agentDefVia !== "string" || agent.agentDefVia.trim() === "") {
+      throw new RegistryError(`agent '${agentId}' agentDefVia must be a non-empty string`);
+    }
     if (hasDir || hasDialect) {
       throw new RegistryError(
-        `agent '${agentId}' agentDefSupport '${support}' must not declare agentDefDir or agentDefDialect`,
+        `agent '${agentId}' agentDefVia is set (served by another harness) and must not declare agentDefDir or agentDefDialect`,
       );
     }
   } else {
