@@ -248,7 +248,7 @@ skills/drive-codex/
 {
   "version": 1,
   "roots": [
-    { "name": "public",  "path": "~/code/custom_skills",  "visibility": "public" },
+    { "name": "public",  "path": "~/code/skills-manager",  "visibility": "public" },
     { "name": "private", "path": "~/code/skills_private", "visibility": "private" }
   ]
 }
