@@ -557,6 +557,62 @@ describe("review model", () => {
     expect(after).toBe(before);
   });
 
+  test("every unit kind carries visibility and its source-root name", async () => {
+    const pub = makeRoot(sb, "public"); // visibility public, name "public"
+    makeSkill(pub.path, "pub-skill", { body: "public body" });
+    makeAgentDef(pub.path, "plain-agent", {});
+    makeAgentDef(pub.path, "helper-agent", { instructions: "The real instructions.\n" });
+    makeProviderPool(pub.path, { claude: providerText("claude", "claude") });
+
+    const priv = makeRoot(sb, "vault", "private"); // visibility private, name "vault"
+    makeSkill(priv.path, "priv-skill", { body: "private body" });
+    makeComposed(priv.path, "orchestrate", {
+      skillYaml: {
+        posture: "yolo",
+        consumers: {
+          "claude-code": { description: "Delegate to codex." },
+          codex: { description: "Delegate to claude." },
+        },
+        dimensions: [
+          { key: "judgment", candidates: [{ provider: "claude", model: "m1" }, { provider: "codex", model: "m1" }] },
+        ],
+      },
+      template: "# Orchestrate {{consumer}}\n\n{{routing_table}}\n",
+      providers: { claude: providerText("claude", "claude"), codex: providerText("codex", "codex") },
+    });
+    // The winning (override) stub sits in the private root: effective def is private.
+    makeAgentDef(priv.path, "helper-agent", {
+      agentYaml: { export: "none" },
+      instructions: "Host-local disable stub.\n",
+    });
+    writeMachineConfig(sb, { version: 1, roots: [pub, priv], agents: ["claude-code", "codex"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const byName = (n: string) => model.units.find((u) => u.name === n);
+    const byId = (id: string) => model.units.find((u) => u.id === id);
+
+    // Native public + private.
+    expect(byName("pub-skill")).toMatchObject({ visibility: "public", sourceRoot: "public" });
+    expect(byName("priv-skill")).toMatchObject({ visibility: "private", sourceRoot: "vault" });
+    // Composed from the private root.
+    expect(byName("orchestrate")).toMatchObject({ visibility: "private", sourceRoot: "vault" });
+    // Shared pool: the pool's own root.
+    expect(byId("pool-public")).toMatchObject({ visibility: "public", sourceRoot: "public" });
+    // Agent def (live) + disabled def whose effective definition is the private override.
+    expect(byName("plain-agent")).toMatchObject({ visibility: "public", sourceRoot: "public" });
+    const helper = byName("helper-agent");
+    expect(helper?.disabled).toBe(true);
+    expect(helper).toMatchObject({ visibility: "private", sourceRoot: "vault" });
+
+    // Every unit, no exceptions, carries both fields.
+    for (const u of model.units) {
+      expect(u.visibility === "public" || u.visibility === "private").toBe(true);
+      expect(typeof u.sourceRoot).toBe("string");
+      expect(u.sourceRoot.length).toBeGreaterThan(0);
+    }
+  });
+
   test("model is stable across runs (modulo clock)", async () => {
     const root = makeRoot(sb, "public");
     makeSkill(root.path, "plain-skill");

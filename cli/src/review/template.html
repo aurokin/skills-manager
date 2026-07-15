@@ -64,8 +64,29 @@
     background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 12px;
   }
   .filter input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+  .side-controls { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  .side-controls .ctl-label { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-3); font-weight: 600; }
+  .seg-sm { margin-left: auto; }
+  .seg-sm button { padding: 3px 10px; font-size: 11px; }
   .tree { overflow-y: auto; flex: 1; padding: 6px 0 18px; }
   .group-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); padding: 14px 16px 5px; font-weight: 600; }
+  /* collapsible section header (both grouping views) */
+  .group-head {
+    display: flex; align-items: center; gap: 7px; width: 100%; border: 0; background: none;
+    color: var(--ink-3); font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
+    font-weight: 600; padding: 14px 16px 5px; text-align: left; cursor: pointer;
+  }
+  .group-head:hover { color: var(--ink-2); }
+  .group-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .group-head .gcaret { font-size: 8px; display: inline-block; color: var(--ink-3); }
+  .group-head[aria-expanded="true"] .gcaret { transform: rotate(90deg); }
+  .group-head .gcount { margin-left: auto; font-weight: 400; letter-spacing: .04em; text-transform: none; font-family: var(--mono); }
+  /* per-row visibility marker: private only, calm neutral pill */
+  .vis-mark {
+    font-family: var(--mono); font-size: 8.5px; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--ink-2); background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0 4px; align-self: center; flex: none;
+  }
   .unit-btn {
     display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 16px;
     border: 0; background: none; color: var(--ink); font-family: var(--mono);
@@ -103,6 +124,7 @@
   .badge.private { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
   .badge.disabled { color: var(--ink-3); border-color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
   .note { color: var(--ink-2); font-size: 13px; max-width: 78ch; margin: 8px 0 0; }
+  .unit-sub { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-top: 5px; }
   .variant-row { display: flex; align-items: center; gap: 14px; margin: 12px 0 0; flex-wrap: wrap; }
   .variant-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); font-weight: 600; }
   .deploy-row { gap: 8px; }
@@ -288,6 +310,7 @@
   }
   @media (prefers-reduced-motion: no-preference) {
     .unit-btn, .seg button, .ft-file, .mmap .mcell { transition: background .12s ease, color .12s ease; }
+    .group-head .gcaret { transition: transform .12s ease; }
   }
 </style>
 
@@ -300,6 +323,13 @@
     <div class="filter">
       <input id="q" type="search" placeholder="filter name or text…" aria-label="Filter skills" />
     </div>
+    <div class="side-controls">
+      <span class="ctl-label">Group by</span>
+      <span class="seg seg-sm" id="groupby" role="group" aria-label="Group units by">
+        <button type="button" data-g="type">Type</button>
+        <button type="button" data-g="visibility">Visibility</button>
+      </span>
+    </div>
     <div class="tree" id="tree"></div>
     <div class="side-foot" id="totals"></div>
     <div class="side-legend" aria-label="Dot legend">
@@ -308,6 +338,7 @@
       <span><span class="dot composed"></span>rendered</span>
       <span><span class="dot drift"></span>drift</span>
       <span><span class="dot off"></span>disabled</span>
+      <span><span class="vis-mark">prv</span>private source</span>
     </div>
   </nav>
   <main class="main">
@@ -370,6 +401,75 @@ function dotTitle(u) {
   if (u.badges.includes("composed") || u.badges.includes("agent")) return "rendered artifact (composed skill or agent definition)";
   return "plain skill — symlinked into the shared skill dirs";
 }
+// "Clean" = nothing needs attention (green/plain or rendered dot, not disabled,
+// no drift). Sections of only-clean units collapse by default.
+function unitClean(u) { return !u.disabled && !hasDrift(u); }
+// Type subsection for the Visibility grouping view, independent of group string.
+function unitKind(u) {
+  if (u.badges.includes("pool")) return "pools";
+  if (u.badges.includes("composed")) return "composed";
+  if (u.badges.includes("agent")) return "agent definitions";
+  return "skills";
+}
+
+// ── grouping + collapse state (persisted) ──
+const GROUPBY_KEY = "review.groupBy";
+const COLLAPSE_KEY = "review.collapsed";
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+let groupBy = lsGet(GROUPBY_KEY, "type") === "visibility" ? "visibility" : "type";
+let collapsed = (() => { try { return JSON.parse(lsGet(COLLAPSE_KEY, "{}")) || {}; } catch { return {}; } })();
+// No stored entry → default: collapsed iff every unit in the section is clean.
+function isCollapsed(id, units) {
+  if (Object.prototype.hasOwnProperty.call(collapsed, id)) return !!collapsed[id];
+  return units.every(unitClean);
+}
+function toggleCollapse(id, units) {
+  collapsed[id] = !isCollapsed(id, units);
+  lsSet(COLLAPSE_KEY, JSON.stringify(collapsed));
+}
+function syncGroupBy() {
+  document.querySelectorAll("#groupby button").forEach((b) => b.classList.toggle("on", b.dataset.g === groupBy));
+}
+
+function unitButton(u) {
+  const b = document.createElement("button");
+  b.className = "unit-btn" + (u.id === cur.unit ? " active" : "") + (u.disabled ? " off" : "");
+  const nFiles = u.variants[0].files.length;
+  const nVar = u.matrix ? Object.keys(u.matrix.cells).length + 1 : u.variants.length;
+  if (u.disabled) b.title = "disabled on this machine (export: none override)";
+  else if (hasDrift(u)) b.title = "a deployed placement drifts from what skm would render";
+  const meta = u.disabled ? `<span class="off-tag">off</span>` : `${nFiles}f${nVar > 1 ? " · " + nVar + "v" : ""}`;
+  const vis = u.visibility === "private"
+    ? `<span class="vis-mark" title="private source · ${esc(u.sourceRoot)}">prv</span>` : "";
+  b.innerHTML = `<span class="dot ${dotClass(u)}" title="${esc(dotTitle(u))}"></span>` +
+    `<span class="n">${esc(u.name)}</span>${vis}<span class="meta">${meta}</span>`;
+  b.onclick = () => {
+    const posture = u.matrix ? u.matrix.sourcePosture : cur.posture;
+    cur = { unit: u.id, variant: "source", consumer: "source", posture, ghosts: false };
+    renderAll();
+  };
+  return b;
+}
+
+// A collapsible section: header (caret + label + count) then its unit buttons.
+// An active filter force-expands so matches are never hidden behind a collapse.
+function appendSection(tree, id, label, units, q) {
+  const shown = q ? units.filter((u) => unitMatches(u, q)) : units;
+  if (!shown.length) return;
+  const isCol = q ? false : isCollapsed(id, units);
+  const head = document.createElement("button");
+  head.type = "button";
+  head.className = "group-head";
+  head.setAttribute("aria-expanded", String(!isCol));
+  head.innerHTML = `<span class="gcaret">▶</span><span class="glabel">${esc(label)}</span>` +
+    `<span class="gcount">${units.length}</span>`;
+  head.onclick = () => { toggleCollapse(id, units); renderTree(); };
+  tree.appendChild(head);
+  if (isCol) return;
+  for (const u of shown) tree.appendChild(unitButton(u));
+}
+
 function unitMatches(u, q) {
   if (!q) return true;
   q = q.toLowerCase();
@@ -381,11 +481,17 @@ function unitMatches(u, q) {
   }
   return false;
 }
+// Visibility view: type subsections in this order, only if non-empty.
+const VIS_KINDS = ["skills", "composed", "agent definitions", "pools"];
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
 function renderTree() {
   const q = $("#q").value.trim();
   const tree = $("#tree");
   tree.innerHTML = "";
+  syncGroupBy();
 
+  // Inventory stays a single top-level entry in both grouping views.
   const invLbl = document.createElement("div");
   invLbl.className = "group-label"; invLbl.textContent = "Inventory";
   tree.appendChild(invLbl);
@@ -396,31 +502,19 @@ function renderTree() {
   invBtn.onclick = () => { cur = { ...cur, unit: INV_ID }; renderAll(); };
   tree.appendChild(invBtn);
 
-  const groups = [...new Set(DATA.units.map((u) => u.group))];
-  for (const g of groups) {
-    const units = DATA.units.filter((u) => u.group === g && unitMatches(u, q));
-    if (!units.length) continue;
-    const lbl = document.createElement("div");
-    lbl.className = "group-label"; lbl.textContent = g;
-    tree.appendChild(lbl);
-    for (const u of units) {
-      const b = document.createElement("button");
-      b.className = "unit-btn" + (u.id === cur.unit ? " active" : "") + (u.disabled ? " off" : "");
-      const nFiles = u.variants[0].files.length;
-      const nVar = u.matrix ? Object.keys(u.matrix.cells).length + 1 : u.variants.length;
-      if (u.disabled) b.title = "disabled on this machine (export: none override)";
-      else if (hasDrift(u)) b.title = "a deployed placement drifts from what skm would render";
-      const meta = u.disabled ? `<span class="off-tag">off</span>` : `${nFiles}f${nVar > 1 ? " · " + nVar + "v" : ""}`;
-      b.innerHTML = `<span class="dot ${dotClass(u)}" title="${esc(dotTitle(u))}"></span><span class="n">${esc(u.name)}</span>` +
-        `<span class="meta">${meta}</span>`;
-      b.onclick = () => {
-        const posture = u.matrix ? u.matrix.sourcePosture : cur.posture;
-        cur = { unit: u.id, variant: "source", consumer: "source", posture, ghosts: false };
-        renderAll();
-      };
-      tree.appendChild(b);
+  if (groupBy === "visibility") {
+    for (const vis of ["private", "public"]) {
+      for (const kind of VIS_KINDS) {
+        const units = DATA.units.filter((u) => u.visibility === vis && unitKind(u) === kind);
+        appendSection(tree, `v:${vis}:${kind}`, `${cap(vis)} ${kind}`, units, q);
+      }
+    }
+  } else {
+    for (const g of [...new Set(DATA.units.map((u) => u.group))]) {
+      appendSection(tree, `t:${g}`, g, DATA.units.filter((u) => u.group === g), q);
     }
   }
+
   const totalFiles = DATA.units.reduce((n, u) => n + u.variants.reduce((m, v) => m + v.files.length, 0), 0);
   const totalWords = DATA.units.reduce((n, u) => n + u.variants[0].files.reduce((m, f) => m + words(f.content), 0), 0);
   $("#totals").textContent = `${DATA.units.length} units · ${totalFiles} files · ${totalWords.toLocaleString()} source words`;
@@ -724,6 +818,7 @@ function renderHeadOnly(u) {
   }
   $("#head").innerHTML =
     `<div class="title-row"><h2>${esc(u.name)}</h2>${badges}</div>` +
+    `<div class="unit-sub">${esc(u.visibility)} · ${esc(u.sourceRoot)}</div>` +
     (u.note ? `<p class="note">${esc(u.note)}</p>` : "") + deployRow(u) + controls;
   if (u.matrix) wireMatrixBar(u);
   else $("#head").querySelectorAll(".seg button").forEach((b) => {
@@ -798,5 +893,8 @@ document.addEventListener("keydown", (e) => {
 
 $("#built").textContent = `built ${DATA.built} · ${DATA.machine}`;
 $("#q").addEventListener("input", renderTree);
+document.querySelectorAll("#groupby button").forEach((b) => {
+  b.onclick = () => { if (groupBy !== b.dataset.g) { groupBy = b.dataset.g; lsSet(GROUPBY_KEY, groupBy); renderTree(); } };
+});
 renderAll();
 </script>
