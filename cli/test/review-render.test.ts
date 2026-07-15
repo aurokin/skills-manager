@@ -60,6 +60,11 @@ describe("review HTML render", () => {
     expect(outcome.exitCode).toBe(0);
     expect(fs.existsSync(target)).toBe(true);
     expect(fs.readFileSync(target, "utf8")).toContain("plain-skill");
+
+    // A literal ~ (quoted shell arg) expands against env.home, not cwd.
+    const tildeOutcome = await runReview(sb.env, { ...PLAIN_OPTS, out: "~/tilde-review.html" });
+    expect(tildeOutcome.exitCode).toBe(0);
+    expect(fs.existsSync(path.join(sb.home, "tilde-review.html"))).toBe(true);
   });
 
   test("docs budget drops the largest doc with a marker, leaving the total under budget", () => {

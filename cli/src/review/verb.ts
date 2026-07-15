@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { loadContext } from "../context";
-import { type SkmEnv, stateHome } from "../env";
+import { type SkmEnv, expandTilde, stateHome } from "../env";
 import { privacyViolation } from "../privacy";
 import type { VerbOptions, VerbOutcome } from "../types";
 import { buildReviewModel } from "./model";
@@ -21,7 +21,7 @@ export async function runReview(env: SkmEnv, opts: VerbOptions): Promise<VerbOut
   // The page embeds private-overlay content, so an explicit --out target is
   // guarded like a private placement: refuse a non-allowlisted git worktree.
   const outPath = opts.out
-    ? path.resolve(opts.out)
+    ? path.resolve(expandTilde(env, opts.out))
     : path.join(stateHome(env), "skills-manager", "review.html");
   if (opts.out) {
     const reason = privacyViolation(ctx.config, outPath);
