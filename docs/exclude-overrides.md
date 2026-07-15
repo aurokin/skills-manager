@@ -7,7 +7,8 @@ overrides.
 from upstream-managed curated skills as well as add to them.
 
 Use this when the curated catalog is almost right, but you want to remove
-specific upstream skills or whole upstream repos from your personal overlay.
+specific upstream skills or whole upstream repos from your personal quick-tweak
+configuration. Registered overlay roots are a separate mechanism.
 
 For handmade global skills that should survive sync but are not upstream specs,
 use `preserveGlobalSkillNames` instead. Preservation only protects existing
@@ -107,15 +108,13 @@ out of the final resolved set even if it was also added locally.
   skills.
 - `skm upstream sync` prints a resolved global summary from the final
   post-exclusion explicit set before mutating installed upstream skills.
-- `skm deploy` also enumerates current upstream skills when it
-  needs to print exact resolved repo summaries and `^` full-coverage markers,
-  even when the selected family specs are already explicit.
 - `skm deploy` prints the final post-exclusion planned install
   set before copying skills.
 - `^` means the final resolved set covers every currently enumerated upstream
-  skill for that repo.
-- That means deploys, including `--dry-run`, require `git` whenever exact
-  summary coverage cannot be determined from already-cached enumeration data.
+  skill for that repo in the `upstream sync` summary.
+- Deploy planning requires `git` only when repo-wide specs or exclusions need
+  enumeration. `--dry-run` stops after printing `Planned installs`; a real
+  deploy may enumerate again for its advisory family-coverage audit.
 - If required upstream enumeration fails, the command fails rather than
   guessing.
 - Empty results are valid:
@@ -131,12 +130,11 @@ out of the final resolved set even if it was also added locally.
   not narrow a repo-wide family spec, the deploy set can keep the repo-wide
   `owner/repo` entry. If exclusions narrow that repo, the deploy set falls back
   to explicit surviving skills for that repo.
-- Resolved repo summaries and coverage audit operate on the effective
-  post-exclusion desired state, so intentionally excluded skills do not appear
-  as drift and summary lines remain interpretable even when deploy batching
-  preserves repo-wide specs.
-- Upstream enumeration is reused within one invocation across normalization,
-  summary generation, and coverage audit.
+- Global resolved summaries and both workflows' coverage audits operate on the
+  effective post-exclusion desired state, so intentionally excluded skills do
+  not appear as drift.
+- Upstream enumeration is reused within one invocation where normalization,
+  summary generation, or coverage audit needs the same repo.
 - `excludeFamilySpecs` does not apply to `customFamilies`; custom families are
   additive only.
 
@@ -146,8 +144,8 @@ out of the final resolved set even if it was also added locally.
   [cli/test/upstream-sync-parity.test.ts](../cli/test/upstream-sync-parity.test.ts)
   and
   [cli/test/deploy-parity.test.ts](../cli/test/deploy-parity.test.ts)
-  cover exclusion precedence, repo-wide normalization, resolved summaries,
-  `^` marker behavior, and exclusion-aware coverage audit against the retired
+  cover exclusion precedence, repo-wide normalization, install batching, and
+  exclusion-aware coverage behavior against the retired
   bash scripts' captured output (`cli/test/fixtures/parity-goldens/`). Broader
   validation and empty-result cases live in the `skm` unit suites
   (`cli/test/deploy-*.test.ts`).

@@ -6,9 +6,8 @@
 // guards, XOR rules, copilot target gating, skill-name normalization, and the
 // resolved_* helpers). Error strings are not byte-for-byte identical to Python
 // but the accept/reject decisions are.
-//
-// Phase-2 scope (AUR-614): parse + validate only. Nothing here is wired into
-// the resolver/plan/apply engine — that is phase 3 (AUR-616).
+// The resolver/plan/apply integration consumes this validated model through
+// agentdef/source.ts and agentdef/artifact.ts.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants (mirrors of the Python module-level constants)

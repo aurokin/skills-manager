@@ -10,7 +10,7 @@ import { type SkmEnv, configPath, expandTilde } from "./env";
 import { defaultEnabledAgents } from "./registry";
 import type { MachineConfig, Registry, Root } from "./types";
 
-/** The repo containing this CLI: two levels up from cli/src (→ /…/custom_skills). */
+/** The repo containing this CLI: two levels up from cli/src (→ /…/skills-manager). */
 export function repoRoot(): string {
   const here = path.dirname(fileURLToPath(import.meta.url)); // cli/src
   return path.resolve(here, "..", "..");

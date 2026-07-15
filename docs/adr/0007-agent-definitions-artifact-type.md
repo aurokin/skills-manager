@@ -49,9 +49,10 @@ decision:
    through the **standard skill placement pipeline** (shared + claude +
    hermes-add-only, scoping and all), with two derived-skill caveats:
    placements are always rendered (there is no source `SKILL.md` to
-   symlink), and artifact state keys are type-qualified so a derived skill
-   colliding with a native skill is a deterministic plan-time authoring
-   error, not a silent overwrite. Details in the plan.
+   symlink), and the resolver's shared output-namespace guard makes a derived
+   skill colliding with a native or composed skill a deterministic plan-time
+   authoring error. Type-qualified state keys separately prevent collisions
+   between skill, agent-definition, and composed-skill artifact categories.
 5. **custom_agents is archived after cutover.** Its three definitions
    (plan-reviewer, codexrabbit-code-reviewer, retrorabbit-code-reviewer)
    move into this repo's `agents/`. The gitignored-`agent.yaml` +

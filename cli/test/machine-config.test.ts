@@ -23,8 +23,8 @@ afterEach(() => {
 });
 
 describe("repoRoot", () => {
-  test("resolves to the repo containing the CLI (…/custom_skills)", () => {
-    expect(path.basename(repoRoot())).toBe("custom_skills");
+  test("resolves to the repo containing the CLI (…/skills-manager)", () => {
+    expect(path.basename(repoRoot())).toBe("skills-manager");
     // Registry lives under it, proving the resolution is right.
     expect(fs.existsSync(path.join(repoRoot(), "registry", "agents.json"))).toBe(true);
   });
@@ -36,7 +36,7 @@ describe("defaultConfig", () => {
     expect(config.roots).toHaveLength(1);
     expect(config.roots[0]!.name).toBe("public");
     expect(config.roots[0]!.visibility).toBe("public");
-    expect(path.basename(config.roots[0]!.path)).toBe("custom_skills");
+    expect(path.basename(config.roots[0]!.path)).toBe("skills-manager");
     expect(config.agents).toEqual(defaultEnabledAgents(reg()));
     expect(config.agents).not.toContain("hermes");
     expect(config.privateOriginAllowlist).toEqual([]);
@@ -56,7 +56,7 @@ describe("loadMachineConfig", () => {
     const written: MachineConfig = {
       version: 1,
       roots: [
-        { name: "public", path: "~/code/custom_skills", visibility: "public" },
+        { name: "public", path: "~/code/skills-manager", visibility: "public" },
         { name: "private", path: "~/code/skills_private", visibility: "private" },
       ],
       agents: ["claude-code", "codex"],
@@ -64,7 +64,7 @@ describe("loadMachineConfig", () => {
     writeMachineConfig(sandbox, written);
 
     const config = loadMachineConfig(sandbox.env, reg());
-    expect(config.roots[0]!.path).toBe(path.join(sandbox.home, "code/custom_skills"));
+    expect(config.roots[0]!.path).toBe(path.join(sandbox.home, "code/skills-manager"));
     expect(config.roots[1]!.path).toBe(path.join(sandbox.home, "code/skills_private"));
     expect(config.roots[1]!.visibility).toBe("private");
     expect(config.agents).toEqual(["claude-code", "codex"]);

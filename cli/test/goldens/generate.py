@@ -9,17 +9,26 @@ Deterministic and re-runnable: it reads the committed fixtures under
 `fixtures/<name>/` (agent.yaml + instructions.md) and overwrites
 `agent-defs/<name>/<harness>.golden`.
 
-Usage: python3 cli/test/goldens/generate.py
+Usage:
+  CUSTOM_AGENTS_SRC=/path/to/custom_agents/src \
+    python3 cli/test/goldens/generate.py
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-# The oracle lives in the sibling custom_agents repo; import its pure builders
-# directly instead of shelling out to any sync/CLI entry point.
-CUSTOM_AGENTS_SRC = Path("/Users/auro/code/custom_agents/src")
+# The archived oracle is intentionally not a repository dependency. Regeneration
+# requires an explicit checkout path and imports pure builders only; never invoke
+# the archived sync/CLI entry point.
+custom_agents_src = os.environ.get("CUSTOM_AGENTS_SRC")
+if not custom_agents_src:
+    raise SystemExit("set CUSTOM_AGENTS_SRC to the archived custom_agents/src directory")
+CUSTOM_AGENTS_SRC = Path(custom_agents_src).expanduser().resolve()
+if not (CUSTOM_AGENTS_SRC / "shared_agents").is_dir():
+    raise SystemExit(f"CUSTOM_AGENTS_SRC does not contain shared_agents: {CUSTOM_AGENTS_SRC}")
 sys.path.insert(0, str(CUSTOM_AGENTS_SRC))
 
 from shared_agents.schema import load_agent_definition  # noqa: E402

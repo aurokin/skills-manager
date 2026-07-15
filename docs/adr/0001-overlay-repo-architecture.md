@@ -38,8 +38,11 @@ Five architecture families were evaluated:
 Adopt **B: overlay repos**.
 
 - This public repo remains the single engine and the public catalog.
-- Private repos are data-only overlays mirroring the public layout
-  (`skills/<name>/SKILL.md`, optional upstream specs, an overlay manifest).
+- Private repos are data-only overlays mirroring the public artifact layout
+  (`skills/`, `agents/`, `composed/`, plus an overlay manifest). The originally
+  sketched overlay-level upstream specs remain parsed but unconsumed; ADR 0014
+  keeps upstream sync/deploy inputs in the public catalog plus
+  `.skills.local.json`.
 - A machine-local registry outside any repo (see ADR 0005) lists registered
   overlay paths and their visibility (`public` / `private`).
 - The engine composes all registered roots into one desired state and syncs

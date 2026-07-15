@@ -24,6 +24,8 @@ A **machine-local override root** — an ordinary registered root that exists
 only on that host (e.g. `~/.config/skills-manager/local-root`, listed **last**
 in the machine config) — may redefine an agent definition by name with an
 `export: none` stub — a minimal but complete definition (`agents/<name>/agent.yaml` with `name`, `description`, `export: none`, plus a non-empty `instructions.md`; the loader rejects partial stubs).
+Because `skm root add` validates every root as a skill-capable root, this local
+root must also contain a `skills/` directory; it may be empty.
 
 Resolution is later-root-wins on name collision (ADR 0001). Because the
 override root is registered last, its stub becomes the **effective** definition

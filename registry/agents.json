@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "researched": "2026-07-10",
+  "researched": "2026-07-15",
   "note": "Global-scope agent capability registry. See docs/skills-manager-design.md §4 for the research behind every entry. reads[] is precedence-ordered where the agent defines precedence; maybeReads[] entries are unconfirmed reads treated as reads for deny guarantees.",
   "directories": {
     "shared": { "path": "~/.agents/skills" },
@@ -213,7 +213,7 @@
       "skillInvocation": {
         "userInvocation": "none",
         "gate": "none",
-        "evidence": "Empirical probe of agy v1.1.2 (2026-07-15) + docs antigravity.google/docs/skills: SKILL.md frontmatter is name (optional) + description (required) only; no disable-model-invocation or any skill-gating field exists. Antigravity's permissions engine gates tools, not skills. No per-skill user invocation. Treat as a no-gate agent (ADR 0011) → gated skills are never placed for it.",
+        "evidence": "Empirical probe of agy v1.1.2 (2026-07-15) + docs antigravity.google/docs/skills: SKILL.md frontmatter is name (optional) + description (required) only; no disable-model-invocation or any skill-gating field exists. Antigravity's permissions engine gates tools, not skills. No per-skill user invocation. Treat as a no-gate agent (ADR 0011) → gated skills are excluded by default unless a per-skill permissive opt-in accepts the prose gate.",
         "probedVersion": "1.1.2",
         "probedOn": "2026-07-15"
       }

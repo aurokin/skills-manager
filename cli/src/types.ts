@@ -80,8 +80,7 @@ export interface AgentCapability {
   /** Placements are add-only; never pruned, never overwritten (hermes). */
   addOnly?: boolean;
   evidence: string;
-  // ── Agent-definition (subagent) directory support (AUR-614, phase 2). ──
-  // Parse/validate only; not yet wired into placement (phase 3, AUR-616).
+  // ── Agent-definition (subagent) directory support (ADRs 0007–0009). ──
   /** Whether this agent reads a user-global agent-definition directory. */
   agentDefSupport?: AgentDefSupport;
   /** User-global agent-definition dir (may contain a leading `~`). Present iff supported. */

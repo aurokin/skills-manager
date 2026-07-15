@@ -17,7 +17,8 @@ longer identifies ownership.
 
 ## Decision
 
-1. **Verbs:** `plan`, `apply`, `status`, `doctor` (plus `list`, `explain`).
+1. **Verbs:** `plan`, `apply`, `status`, `doctor`, and `explain` (later ADRs
+   add `review`, `root`, `adopt`, `deploy`, and `upstream sync`).
    `plan` never mutates. `apply` accepts `--plan <file>` so what was
    reviewed is exactly what runs. All verbs support `--json`; TTY gets
    human-pretty output.
@@ -27,10 +28,11 @@ longer identifies ownership.
    `~/.local/state/skills-manager/state.json`, recording every artifact the
    engine placed: skill name, source root, visibility, placement paths,
    kind (symlink / rendered file), and content hash for rendered artifacts.
-4. **Deletion invariant:** the engine only ever deletes artifacts the state
+4. **Managed deletion invariant:** `apply` only deletes artifacts the state
    file says it owns. Anything else on disk is reported as `foreign` by
    `status`/`doctor` and never touched. This generalizes the previous
-   Hermes add-only special case into a universal rule.
+   Hermes placements remain an explicit add-only policy. ADR 0014 later adds a
+   separate, non-state ownership model for upstream global normalization.
 5. **Drift model:** `status` computes a three-way diff — desired (catalog +
    overlays + local config) vs state (what we recorded) vs filesystem —
    classifying divergences as `missing`, `stale`, `modified`, `foreign`, or

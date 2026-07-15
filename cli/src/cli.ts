@@ -135,7 +135,7 @@ export function parseArgs(argv: string[]): ParsedInvocation {
   };
 }
 
-const USAGE = `skm — skills manager (local skills placement engine)
+const USAGE = `skm — curated skills and agent-definition manager
 
 Usage:
   skm plan    [--json]                     desired vs state; exit 2 if changes pending

@@ -2,8 +2,7 @@
 // composed skill from its already-read source files (skill.yaml mapping, the
 // SKILL.tmpl.md body, provider files, and consumer files) plus the registry.
 // Mirrors the accept/reject discipline of agentdef/schema.ts. The render pipeline
-// (bytes = f(source, consumer, posture)) and placement fan-out are AUR-646; this
-// module is the data layer only.
+// in render.ts consumes this model for per-consumer, per-posture placement fan-out.
 
 import { parse as parseYaml } from "yaml";
 import type {

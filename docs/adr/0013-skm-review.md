@@ -30,7 +30,8 @@ rejects:
   skill was retired) and each drift required a hand edit to a file the
   engine knew nothing about.
 - It reaches into `cli/src/` internals via a cross-repo relative import
-  (`../../code/custom_skills/cli/src/composed/render`), so engine
+  (`../../code/custom_skills/cli/src/composed/render`, using the former repo
+  name at the time), so engine
   refactors can silently break it.
 - Its drift detection is a parallel implementation (ad-hoc byte
   compares) of what `skm status` already computes as a three-way
@@ -71,12 +72,12 @@ from engine APIs — no filesystem knowledge or name lists of its own:
 | Installed-now inventory dirs | the agent registry's per-agent skill dirs — not a hardcoded dir list |
 | Inventory provenance labels | `scan.ts` classification + state ownership + the new specs loader (below) |
 | Embedded skill documents (click-to-read) | file reads deduplicated by resolved real path, size-capped, keyed into inventory entries |
-| Machine identity, build time | state file machine + clock — no literals |
+| Machine identity, build time | injected environment machine name + clock — no literals |
 
-**Upstream attribution needs a new engine API — that is in scope.**
-Upstream skills are not in skm's model today: bash owns upstream sync
-until migration phase 6/7, they are absent from the ownership state, and
-`computeDrift` rightly classes them `foreign`. No engine loader parses
+**Historical phase-1 context (superseded by ADR 0014).**
+At the time, upstream skills were not in skm's model: bash owned upstream sync
+until migration phase 6/7, they were absent from the ownership state, and
+`computeDrift` rightly classed them `foreign`. No engine loader parsed
 `catalog/global-specs.txt`. Rather than let the review model re-parse
 catalogs inline (the prototype's sin), phase 1 adds a small read-only
 specs loader to the engine (`cli/src/catalog-specs.ts`: global specs,
@@ -89,8 +90,9 @@ therefore `catalogSpec` — "matches curated entry `<owner>/<repo>`" — and
 the page labels it as catalog expectation, never as verified origin.
 Verified origin requires real installation metadata (the `skills` CLI's
 own records, or skm's state once phase-7 vendoring lands) and is
-explicitly deferred to that path. Sync stays with bash; the loader is
-the natural first brick of phase 7.
+explicitly deferred to that path. ADR 0014 subsequently absorbed sync and added
+hash-gated lock attestation; catalog expectation remains the fallback when the
+lock is silent, unreadable, or does not match disk.
 
 **Editorial notes are authored data, not view strings.** The prototype's
 per-unit prose ("byte-for-byte fork of the Cursor app's shipped skill…")
@@ -134,8 +136,7 @@ versioned, not unit-tested, except `linediff.ts` (below).
   so it renders anywhere a file can be opened.
 - Embedded documents are budgeted: per-doc cap (80 KB, as the prototype)
   plus a page-total docs budget (default 4 MB); past it, docs are
-  dropped largest-first with a visible "content omitted, run with
-  `--no-doc-budget`" marker — never silently.
+  dropped largest-first with a visible content-omitted marker — never silently.
 - The posture line-diff (LCS ghosts) becomes a small pure module
   (`cli/src/review/linediff.ts`) with unit tests — it is the one piece
   of real algorithmic logic in the view path.

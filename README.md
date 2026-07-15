@@ -1,11 +1,12 @@
-# Custom Skills
+# Skills Manager
 
 Curated local and upstream skills — plus agent definitions — for multiple coding agents.
 
-This repo has two distinct workflows:
-
-1. Global normalization for your personal always-on setup
-2. Project deployment for repo-specific skill families like Expo and Convex
+This repo is both a curated catalog and the implementation of `skm`. It manages
+owned local/composed skills and agent definitions with `plan`/`apply`, syncs a
+global upstream baseline, deploys project-specific skill families, and renders
+an HTML review console. The two upstream workflows delegate fetch and placement
+to the external `skills` CLI; owned artifacts use skm's state and drift model.
 
 It also carries **agent definitions** under [`agents/`](agents/): one
 `agent.yaml` + `instructions.md` per subagent, rendered per-harness by `skm`
@@ -34,8 +35,8 @@ its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 
 *Public-only review artifact generated from this repository.*
 
-It also supports an optional gitignored personal overlay file for extra global
-skills, per-family additions, and custom project families.
+It also supports an optional gitignored quick-tweak file for extra global
+skills, per-family additions, exclusions, and custom project families.
 
 ## Requirements
 
@@ -44,6 +45,35 @@ skills, per-family additions, and custom project families.
 - `git`
 - `curl` for the `agents-md` sync maintenance script
 - `jq` is only needed to run the golden-backed parity suites' `git` shim (dev/test), not at runtime
+
+## Quick Start
+
+```bash
+cd cli
+bun install
+bun src/cli.ts plan
+bun src/cli.ts apply
+```
+
+`plan` is read-only. `apply` creates or updates desired placements; stale owned
+placements are removed only with `apply --prune`.
+
+## After Renaming an Existing Checkout
+
+If this checkout moved from `custom_skills` to `skills-manager`, update any
+registered root before running `plan`, `apply`, or `status`; a configured root
+that no longer exists is a deliberate hard error:
+
+```bash
+cd cli
+bun src/cli.ts root list
+bun src/cli.ts root add ~/code/skills-manager public
+bun src/cli.ts root remove ~/code/custom_skills
+```
+
+The machine config is `~/.config/skills-manager/config.json` (or under
+`$XDG_CONFIG_HOME`). No migration is needed when that file does not exist: the
+default public root is derived from the CLI's current checkout.
 
 ## Commands
 
@@ -84,8 +114,8 @@ cd cli && SKILLS_AUDIT_REPO_COVERAGE=0 bun src/cli.ts upstream sync
 
 ### Agent targets
 
-`SKILLS_AGENTS` is a single space-separated override. When unset, `skm` uses
-the standard set:
+`SKILLS_AGENTS` is a single space-separated override for `upstream sync` and
+`deploy`. When unset, those verbs use the standard external-CLI target set:
 
 - `codex`
 - `opencode`
@@ -98,18 +128,30 @@ additional agents like Hermes (see below).
 
 ### Hermes opt-in
 
-`hermes-agent` is supported as an opt-in target. Include it in `SKILLS_AGENTS`:
+There are two separate target ids and control planes:
+
+- `skm upstream sync` and `skm deploy` drive the external `skills` CLI. Use
+  `hermes-agent` in `SKILLS_AGENTS` (or deploy's `--agents`).
+- Local `skm plan` / `apply` reads `~/.config/skills-manager/config.json`. Use
+  the registry id `hermes` in that file's `agents` array; `SKILLS_AGENTS` does
+  not affect local placement.
+
+For upstream sync, include `hermes-agent` in `SKILLS_AGENTS`:
 
 ```bash
 cd cli && SKILLS_AGENTS="codex opencode gemini-cli github-copilot claude-code hermes-agent" \
     bun src/cli.ts upstream sync
 ```
 
+For local placement, append `hermes` to the existing `agents` array in machine
+config. Do not replace that array with the shorter upstream target set above;
+local defaults also include other supported agents from `registry/agents.json`.
+
 Hermes behavior is intentionally different:
 
 - Hermes does **not** read `~/.agents/skills` by default. The `skills` CLI
-  installs Hermes targets under `~/.hermes/skills/<name>`. Local repo skills
-  are symlinked there by `skm` when hermes is enabled (add-only: skm never
+  installs Hermes targets under `~/.hermes/skills/<name>`. Local repo artifacts
+  are placed there by `skm` when hermes is enabled (add-only: skm never
   prunes hermes placements).
 - `~/.hermes/skills` is treated as **add-only**. Stale-skill removal is scoped
   with `-a` to non-Hermes agents so the CLI never removes a Hermes entry on
@@ -138,29 +180,26 @@ Deploys curated skill families into a target directory with project-scoped `skil
 
 Use it when a repo needs a focused set of skills, for example Expo or Convex, without making them part of your global always-on setup.
 
-If `.skills.local.json` exists, its `familySpecs` extend curated families and
-its `customFamilies` become selectable alongside the curated ones.
-
 Behavior:
-- targets the exact directory you choose
-- expands current-user `~` and `~/...` target paths, including interactive input and quoted `--target` values
+- targets the exact positional directory you choose
+- expands current-user `~` and `~/...` target paths
 - does not expand `~user/...` target paths
 - works in plain directories and git repos
 - copies skills into the project-managed agent directories
 - installs only the selected families
 - does not normalize or remove unrelated project skills
 - audits selected curated family repos for upstream drift when coverage manifests are configured
-- requires `git` whenever upstream enumeration is needed for deploy planning, resolved summaries, or coverage-driven full-coverage markers
-- as a result, `--dry-run` also requires `git` when the printed summary needs exact upstream coverage information
+- requires `git` during planning only when a repo-wide spec or exclusion must be
+  expanded; a real deploy may also enumerate during its advisory coverage audit
+- prints repo batches under `Planned installs`; `--dry-run` stops before the
+  coverage audit and makes no project changes
 
 If `.skills.local.json` exists, its `familySpecs` extend curated families and
 its `excludeFamilySpecs` remove explicit upstream skills from each curated
 family's resolved contribution before the selected families are merged.
 
-Exclusion-override behavior, resolved repo summaries, and the `^` full-coverage
-marker are documented in [docs/exclude-overrides.md](docs/exclude-overrides.md).
-The `^` marker means the final resolved set covers all current upstream skills
-for that repo.
+Exclusion-override and repo-expansion behavior is documented in
+[docs/exclude-overrides.md](docs/exclude-overrides.md).
 
 The bash interactive prompt mode is dropped (`skm` is agent-first);
 `--list-families` plus flags cover the human path:
@@ -177,7 +216,7 @@ cd cli && bun src/cli.ts deploy \
 List available families:
 
 ```bash
-cd cli && bun src/cli.ts deploy ~/code/my-app --list-families
+cd cli && bun src/cli.ts deploy --list-families
 ```
 
 ### Local-skill placement (`skm`)
@@ -192,6 +231,12 @@ bun src/cli.ts plan   # preview
 bun src/cli.ts apply  # place
 ```
 
+Use `status` for drift, `doctor` for safety diagnostics (`--fix` only for its
+supported repairs), and `explain <skill>` for source/scoping/visibility. `review`
+writes the self-contained console to
+`$XDG_STATE_HOME/skills-manager/review.html` by default; use `--out <path>` to
+choose another privacy-checked destination.
+
 The former `./link-skills.sh` was retired once skm reached placement parity
 (gate awareness, hermes add-only, stale-link pruning are covered by
 `cli/test`).
@@ -200,7 +245,9 @@ The former `./link-skills.sh` was retired once skm reached placement parity
 
 Refreshes the forked `agents-md` local skill from upstream `getsentry/skills@agents-md`.
 
-`skills/agents-md/SKILL.md` is generated output. Do not edit it by hand.
+`skills/agents-md/SKILL.md` is generated output. Do not edit it by hand. The
+sync exits nonzero if upstream structure no longer matches the maintained patch,
+so the weekly workflow surfaces drift instead of retaining stale output.
 
 ```bash
 bash maintenance/sync-agents-md.sh
@@ -208,7 +255,8 @@ bash maintenance/sync-agents-md.sh
 
 ## Catalog
 
-The source of truth is split by purpose:
+The source of truth is split by purpose; see
+[`catalog/README.md`](catalog/README.md) for formats and verification:
 
 - `catalog/global-specs.txt`
   global skills managed by `skm upstream sync`
@@ -265,6 +313,10 @@ private overlay repo. Private
 skills and agent definitions live in a separate registered overlay root (a real
 repo, resolved by `skm`); see
 [ADR 0001](docs/adr/0001-overlay-repo-architecture.md).
+
+Both upstream verbs validate the entire file when it exists. A malformed or
+invalid field can therefore block either command even if that field belongs to
+the other workflow.
 
 Supported keys:
 

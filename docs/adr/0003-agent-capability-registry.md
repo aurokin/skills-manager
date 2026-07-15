@@ -20,8 +20,8 @@ want: a typed per-agent capability registry.
 ## Decision
 
 1. The engine owns a declarative **agent capability registry**
-   (`registry/agents.json` in this repo, overridable per machine) recording
-   per agent: canonical id, global skill dir(s), project skill dir(s),
+   (`registry/agents.json` in this repo) recording per agent: canonical id,
+   global skill dir(s),
    whether it reads the shared `~/.agents/skills`, symlink support,
    frontmatter dialect (see ADR 0004), and skills-support status
    (`supported` / `none` / `unknown`).

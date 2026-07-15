@@ -2,6 +2,8 @@
 
 - Status: accepted
 - Date: 2026-07-14
+- Implementation: complete; final CLI syntax is `skm deploy <dir> --family <name>`
+  and `skm upstream sync`
 - Depends on: [ADR 0006](0006-plan-apply-ownership-state.md) (state,
   delete-only-what-we-own), [ADR 0013](0013-skm-review.md) (review console,
   `catalog-specs.ts`, the verified-origin deferral)
@@ -93,7 +95,7 @@ true; no implementer should wire lock or catalog into `computeDrift`.
 
 ### 3. Families port to `skm deploy` (the reserved verb)
 
-`skm deploy <family> <dir>` (design doc §8) ports `deploy-project-skills.sh`
+`skm deploy <dir> --family <name>` (design doc §8) ports `deploy-project-skills.sh`
 on the copy path (`skills add --copy` per repo batch, not symlinks). The
 surviving surface, enumerated: repeatable `--family`, `--all-families`,
 `--agents`, `--dry-run`, `--yes`, `--list-families`; custom families and
@@ -111,8 +113,8 @@ preserved verbatim: Hermes add-only scoping and the owned-target
 broken-symlink sweep, OpenClaw risk flags, diffwarden full-depth,
 `preserveGlobalSkillNames`, the coverage audit.
 
-**`.skills.local.json` is a required input of both new verbs**, not an
-optional nicety: `lib/catalog.sh` reads `globalSpecs`,
+**`.skills.local.json` is a supported input surface of both new verbs**: when
+present, `lib/catalog.sh` reads `globalSpecs`,
 `excludeGlobalSpecs`, `preserveGlobalSkillNames`, `familySpecs`,
 `excludeFamilySpecs`, and `customFamilies` from this gitignored quick-tweak
 file, with validation. The port carries the whole override + validation

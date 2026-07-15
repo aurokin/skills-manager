@@ -1,23 +1,25 @@
 # skm — Skills Manager CLI
 
-A TypeScript CLI (Bun runtime, Node-compatible APIs) that manages **local**
-agent skills: skill directories under `<root>/skills/<name>/` of the public repo
-and registered overlay repos, placed into each agent's skill directories
-according to per-agent scoping, with first-party frontmatter rendering,
-ownership tracking, and drift detection.
+A TypeScript CLI (Bun runtime, Node-compatible APIs) that manages the Skills
+Manager surface: local and composed skills, agent definitions, registered
+overlay roots, project-family deploys, and global upstream sync. Managed
+artifacts use per-agent scoping, first-party rendering, ownership tracking, and
+drift detection; upstream fetch and placement delegates to the external
+`skills` CLI.
 
 This is the engine described in [`docs/skills-manager-design.md`](../docs/skills-manager-design.md)
 and ADRs [0003](../docs/adr/0003-agent-capability-registry.md),
 [0004](../docs/adr/0004-first-party-frontmatter-rendering.md),
 [0006](../docs/adr/0006-plan-apply-ownership-state.md).
 
-## v1 scope
+## Capabilities
 
 In scope:
 
 - **Local skills** from the public repo plus registered overlay roots.
 - **Agent-scoped placement** via a read-graph solver over
-  `registry/agents.json` (`allow` = exactly-these; `deny` = hard guarantee).
+  `registry/agents.json` (`allow` = requested recipients with reported bleed;
+  `deny` = hard guarantee).
 - **First-party rendering** for claude-code / codex / github-copilot
   (`agents/*.yaml` frontmatter deep-merged into a real dir copy).
 - **Composed skills** from `composed/<name>/` of any root: one source
@@ -43,16 +45,21 @@ In scope:
   ([ADR 0011](../docs/adr/0011-user-invoked-only-skill-gating.md)).
 - **Ownership state** + `plan`/`apply` (Terraform-style), drift `status`,
   `doctor`, `explain`.
+- **Agent definitions** from `agents/<name>/`: per-harness rendered files,
+  derived-skill export, explicit legacy-manifest adoption, and optional
+  `tprompt` export (ADRs 0007–0009).
 
-Out of scope for v1 (unchanged; owned elsewhere):
+Deferred or intentionally out of scope:
 
 - No upstream vendoring, no TUI.
 
 Now in scope (ADR 0014): **project-family deploys** via `skm deploy` and
 **unscoped upstream sync** via `skm upstream sync` (see below). The vercel
-`skills` CLI stays the fetch/place engine behind both verbs; skm treats any
-upstream install it does not own as **foreign** — reported, never touched,
-never adopted into `state.json`.
+`skills` CLI stays the fetch/place engine behind both verbs. Managed
+`plan`/`apply` treats upstream installs as **foreign** — reported, never touched,
+and never adopted into `state.json`. In contrast, `upstream sync` intentionally
+removes installed global names outside
+the resolved catalog/preserve set and sweeps dangling global symlinks.
 
 ## Verbs
 
@@ -63,8 +70,12 @@ skm status  [--json]                     drift: missing|stale|modified|foreign|u
 skm doctor  [--json] [--fix]             leaks, broken links, deny-guarantee checks
 skm explain <skill> [--json]             source, scoping, placements, bleed
 skm review  [--json] [--out <path>]      HTML review console (ADR 0013); --json emits the model
-skm root    add|list|remove [<path>]     edit machine config roots
-skm deploy  <dir> [--family <n>]… [--all-families] [--agents "<a b>"] [--dry-run] [--yes] [--list-families]
+skm root    list
+skm root    add <path> [public|private]
+skm root    remove <name|path>
+skm adopt   custom-agents [--agents-home <dir>]
+                                             one-time adoption of legacy agent-definition placements
+skm deploy  [<dir>] [--family <n>]… [--all-families] [--agents "<a b>"] [--dry-run] [--yes] [--list-families]
 skm upstream sync                        sync global upstream skills (remove stale / update / add missing)
 ```
 
@@ -74,8 +85,9 @@ into a project directory via `skills add --copy` — the port of the retired
 (`catalog/families.tsv` + `catalog/families/*.txt`) plus the `.skills.local.json`
 `familySpecs` / `excludeFamilySpecs` / `customFamilies` overrides (validated),
 resolves the whole-repo preserve-vs-explicit exclude expansion, runs the family
-coverage audit, and shells out to the `skills` CLI per repo batch. The bash
+coverage audit on real deploys, and shells out to the `skills` CLI per repo batch. The bash
 interactive prompt mode is dropped (`--list-families` + flags are the human path).
+`--list-families` does not require a target directory; deployment does.
 Deployed copies are **not skm-owned**: `deploy` never reads or writes `state.json`
 (ADR 0014 ownership boundary), so it coexists with `plan`/`apply`.
 
@@ -103,7 +115,7 @@ reviewed plan (refused if the desired-state hash changed). Every verb supports
 
 ## Safety rules
 
-- **Deletion invariant.** `apply` only ever deletes paths recorded in the
+- **Managed deletion invariant.** `apply` only ever deletes paths recorded in the
   ownership state. Pruning owned-but-undesired placements requires `--prune`.
   Anything else on a target is `foreign` — skipped and reported.
 - **Adoption.** An existing symlink already pointing at the correct source is
@@ -112,7 +124,7 @@ reviewed plan (refused if the desired-state hash changed). Every verb supports
   overwrite a real directory.
 - **Privacy guards.** Private-visibility skills refuse placement inside a git
   worktree whose `origin` is not in `privateOriginAllowlist`; `doctor` scans for
-  private content in unexpected locations and deny-guarantee violations.
+  supported native/composed private-skill leaks and deny-guarantee violations.
 - **No real HOME in tests.** Every path resolves through the injected `SkmEnv`
   (`src/env.ts`); tests build a temp sandbox and never touch the real machine.
   Determinism: time comes from `env.clock`, machine name is injected.
@@ -126,6 +138,8 @@ reviewed plan (refused if the desired-state hash changed). Every verb supports
   append-only `audit.jsonl` (honors `XDG_STATE_HOME`).
 - Public scoping: `catalog/agent-scopes.json`. Overlay scoping:
   `<root>/overlay.json`.
+- Quick-tweak upstream/family overrides: repo-root `.skills.local.json`; start
+  from `.skills.local.json.example`.
 
 ## Relationship to the bash scripts
 
@@ -139,12 +153,13 @@ on the copy path (decision 3) and `skm upstream sync` is the port of
 deleted, and the live-bash parity suites became golden-backed:
 `test/deploy-parity.test.ts` and `test/upstream-sync-parity.test.ts` now assert
 the TS paths against `test/fixtures/parity-goldens/{deploy,sync}.json` — the
-bash scripts' recorded install plans / `skills` argv / filesystem state,
+  bash scripts' recorded install plans / `skills` argv / filesystem state,
 captured one final time from those scripts the moment before deletion. The
 destructive edges (Hermes add-only narrowing and sweep, OpenClaw/diffwarden
-flags, preserve-lists, excludes) survive as golden assertions. skm never
-deletes what it does not own — and neither the `deploy` nor `upstream sync`
-verb touches `state.json` (ADR 0014 ownership boundary). Scoped upstream
+flags, preserve-lists, excludes) survive as golden assertions. Managed
+`plan`/`apply` never deletes what state does not own; `upstream sync` separately
+normalizes the external CLI's global inventory against the catalog. Neither
+`deploy` nor `upstream sync` touches `state.json` (ADR 0014 ownership boundary). Scoped upstream
 vendoring (design §5, phase 7) stays deferred.
 
 ## Development
@@ -155,8 +170,9 @@ bun test            # bun test discovers test/*.test.ts
 bun src/cli.ts …    # run the CLI (also: bun run skm …)
 ```
 
-Module layout (`src/`): `types.ts` (domain contract), `env.ts` (injected env +
-path roots), `registry.ts` / `machine-config.ts` (implemented), and stubs for
-`resolve`, `solver`, `render`, `plan`, `apply`, `status`, `doctor`, `explain`,
-`state`, `scan`, `audit`, `catalog`, `overlay` — each throwing `NotImplemented`
-until its owning team fills it in.
+Module layout (`src/`): core resolution and ownership live in `resolve.ts`,
+`solver.ts`, `plan.ts`, `apply.ts`, `state.ts`, and `scan.ts`; artifact-specific
+code lives under `agentdef/`, `composed/`, and `tprompt/`; upstream workflows
+live under `deploy/` and `upstream/`; the review console lives under `review/`.
+All filesystem roots and probes flow through the injected environment in
+`env.ts`, which keeps tests isolated from the real home directory.

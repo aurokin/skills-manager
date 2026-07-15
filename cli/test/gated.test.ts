@@ -88,7 +88,7 @@ describe("solveGated — placement matrix", () => {
     // Never the shared root, never a symlink.
     expect(r.placements.some((p) => p.dir === "shared")).toBe(false);
     expect(r.placements.some((p) => p.kind === "symlink")).toBe(false);
-    // antigravity is a no-gate agent (ADR 0011) → gated skills are never placed for it.
+    // antigravity is a no-gate agent (ADR 0011) → excluded without a permissive opt-in.
     expect(r.placements.some((p) => p.agent === "antigravity" || p.dir === "antigravity")).toBe(false);
   });
 

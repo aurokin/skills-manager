@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Skills Manager CLI — local agent-scoped skill placement engine.",
+  "description": "Skills Manager CLI — curated skills and agent-definition management.",
   "bin": {
     "skm": "src/cli.ts"
   },

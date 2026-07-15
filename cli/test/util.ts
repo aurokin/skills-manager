@@ -11,7 +11,7 @@ import { stringify } from "yaml";
 import { configPath, type Clock, type SkmEnv } from "../src/env";
 import type { AgentScope, MachineConfig, Root, Visibility } from "../src/types";
 
-/** The real repo root (…/custom_skills), for locating registry/agents.json in tests. */
+/** The real repo root (…/skills-manager), for locating registry/agents.json in tests. */
 export function repoRootDir(): string {
   const here = path.dirname(fileURLToPath(import.meta.url)); // cli/test
   return path.resolve(here, "..", "..");

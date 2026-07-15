@@ -1,7 +1,7 @@
 # Skills Manager — Design
 
-- Status: draft for implementation
-- Date: 2026-07-10
+- Status: implemented; current architecture reference
+- Last updated: 2026-07-15
 - Decisions are recorded as ADRs in [docs/adr/](adr/); this doc is the
   integrated picture plus the research that grounds it.
 
@@ -38,6 +38,7 @@ managed by the user's dotfiles if desired.
 | [0011](adr/0011-user-invoked-only-skill-gating.md) | User-invoked-only skills: intent declared once, gate translated per agent |
 | [0012](adr/0012-shared-provider-pools.md) | Shared provider pools: multiple composed skills from one provider source |
 | [0013](adr/0013-skm-review.md) | `skm review` verb for the skill-surface console |
+| [0014](adr/0014-upstream-sync-absorption.md) | Upstream sync and project-family deploys absorbed into `skm`; lock-attested review provenance |
 | [0015](adr/0015-machine-local-override-roots.md) | Machine-local override roots disable an agent definition per host via an `export: none` stub |
 
 ## 3. Architecture overview
@@ -67,7 +68,7 @@ CLI installs into `~/.agents/skills` and maintains the `~/.claude/skills`
 symlinks. The engine adds what the CLI cannot express: scoped placement,
 overlay composition, rendering, ownership, and plan/apply.
 
-## 4. Agent capability matrix (researched 2026-07-10)
+## 4. Agent capability matrix (researched through 2026-07-15)
 
 Sources: source code under `~/code/upstream/<agent>` (clone dates noted),
 official docs, and the vercel-labs `skills` CLI registry (`src/agents.ts`,
@@ -112,7 +113,8 @@ Antigravity has **no skill-gating mechanism** — SKILL.md frontmatter is
 `disable-model-invocation` equivalent (permissions gate tools, not skills).
 It is therefore a no-gate agent (ADR 0011): unscoped and allow-scoped local
 skills place into `~/.gemini/config/skills` (as symlinks, verified above),
-but **gated skills are never placed for it**.
+but gated skills are excluded by default. A per-skill permissive opt-in may
+place one there using the skill's prose gate (ADR 0011).
 
 Antigravity **agent definitions ride the gemini-cli render**: `agy agents`
 discovers both `~/.gemini/agents/` and `~/.gemini/config/agents/` (empirical
@@ -122,6 +124,8 @@ discovered by `agy` as-is. The registry marks antigravity
 render channel** — rendering a second copy would make every definition appear
 twice in `agy agents`. There is deliberately no `antigravity` agent-def
 dialect or harness keyword.
+The served-via relationship currently requires `gemini-cli` to be enabled too;
+an antigravity-only machine config does not synthesize the Gemini render.
 
 ### Corrections to prior assumptions
 
@@ -174,6 +178,7 @@ Known global bleed-over (registry-derived; kept current by `doctor`):
 | `~/.agents/skills` | (shared) | codex, gemini-cli, opencode, pi, cursor, github-copilot, droid |
 | `~/.claude/skills` | claude-code | opencode, cursor, (grok: claude-compat, unconfirmed) |
 | `~/.codex/skills` | codex | cursor |
+| `~/.gemini/skills` | gemini-cli | antigravity (possible/variant-dependent) |
 | all other own dirs | one agent each | no known bleed |
 
 Any skill with scoping is excluded from `~/.agents/skills` entirely
@@ -188,22 +193,22 @@ invented path (ADR 0003). Deprecated dirs (codex's `$CODEX_HOME/skills`)
 are used only when they are the sole scoped option, and the plan flags the
 deprecation.
 
-### Scoped upstream skills
+### Scoped upstream skills (deferred)
 
 The `skills` CLI cannot scope (it always writes canonical shared copies), so
-a scoped spec is **vendored**: the engine clones/sparse-checkouts the
-upstream skill into a manager-owned cache
-(`~/.local/state/skills-manager/store/<owner>__<repo>__<skill>/`) at a
-pinned revision recorded in state, then places it like a local skill.
-`update` refreshes vendored copies. Unscoped specs stay with the `skills`
-CLI.
+the accepted design for a future scoped spec is **vendoring**: clone or
+sparse-checkout the upstream skill into a manager-owned cache, pin its revision
+in state, then place it like a local skill. That store/update path is not
+implemented; ADR 0014 explicitly leaves it deferred until a real scoped-upstream
+need appears. Unscoped specs use `skm upstream sync`, backed by the `skills` CLI.
 
 ## 6. Frontmatter dialects and rendering (ADR 0004)
 
 Baseline: the [agentskills.io](https://agentskills.io/specification) spec —
 `name` (kebab-case, matches dir), `description`, optional `license`,
-`compatibility`, `metadata`, `allowed-tools`. Every canonical SKILL.md in
-our repos must be spec-valid (CI runs `skills-ref validate` or equivalent).
+`compatibility`, `metadata`, `allowed-tools`. Canonical SKILL.md files are
+expected to remain spec-valid; the current repository CI only validates the
+generated `agents-md` fork, so broader spec validation is still a tooling gap.
 
 Per-agent dialects that matter:
 
@@ -254,9 +259,15 @@ skills/drive-codex/
 }
 ```
 
-A registered root that is missing on disk **aborts the run** (never treated
-as "delete its skills"). The gitignored `.skills.local.json` remains the
-quick-tweak layer during migration, merged last (ADR 0005).
+This is a minimal config. Omitting `agents` uses all supported agents except
+the opt-in Hermes target; omitting `privateOriginAllowlist` uses an empty list.
+
+A registered root that is missing on disk **aborts desired-state verbs** such
+as `plan`, `apply`, and `status` (never treated as "delete its skills").
+`deploy` and `upstream sync` deliberately load only the public catalog/config
+inputs they need, so an unrelated missing overlay does not block them. The
+gitignored `.skills.local.json` is a separate quick-tweak input for upstream
+sync and project-family deploys; it is not merged into machine config.
 
 ### Overlay manifest — `<overlay>/overlay.json`
 
@@ -265,7 +276,6 @@ quick-tweak layer during migration, merged last (ADR 0005).
   "version": 1,
   "name": "auro-private",
   "requiresPublic": "3abef4e",
-  "upstream": ["someorg/private-skills@infra"],
   "skills": {
     "fleet-ops":   { "agents": { "allow": ["claude-code", "codex"] } },
     "drive-codex": { "agents": { "deny": ["codex"] } }
@@ -276,22 +286,31 @@ quick-tweak layer during migration, merged last (ADR 0005).
 Scoping for public-repo skills lives in `catalog/agent-scopes.json` (same
 `skills` shape). A skill absent from any scoping map is unscoped (shared
 path). `allow` and `deny` are mutually exclusive per skill; `deny` means
-"all supported agents except these", `allow` means "exactly these,
-deny-everyone-else".
+"all enabled agents except these", while `allow` names requested recipients.
+Incidental readers of a chosen directory remain reported bleed, not an implied
+deny guarantee.
+
+Other source formats are intentionally directory-based: agent definitions use
+`agents/<name>/{agent.yaml,instructions.md}`; composed skills use
+`composed/<name>/{skill.yaml,SKILL.tmpl.md,providers/,consumers/}` and may draw
+from `composed/_providers/`; local `SKILL.md` frontmatter may declare gating and
+`tprompt` export. ADRs 0007–0012 define those schemas and render rules.
 
 ### Ownership state — `~/.local/state/skills-manager/state.json`
 
 ```json
 {
-  "version": 1,
+  "version": 4,
   "machine": "koopa",
   "artifacts": {
-    "drive-codex": {
+    "skill:drive-codex": {
+      "type": "skill",
+      "name": "drive-codex",
       "source": { "root": "private", "visibility": "private" },
       "placements": [
-        { "agent": "claude-code", "path": "~/.claude/skills/drive-codex",
-          "kind": "rendered", "hash": "sha256:9f2c…" },
-        { "agent": "github-copilot", "path": "~/.copilot/skills/drive-codex",
+        { "agent": "claude-code", "path": "/home/user/.claude/skills/drive-codex",
+          "kind": "rendered", "hash": "9f2c…", "tree": "sha256:41ab…" },
+        { "agent": "github-copilot", "path": "/home/user/.copilot/skills/drive-codex",
           "kind": "symlink" }
       ]
     }
@@ -309,22 +328,23 @@ skm doctor   [--json] [--fix]      # leaks, broken links, registry contradiction
                                    # deny-guarantee verification, env-var suggestions
 skm review   [--json] [--out f]    # skill-surface review: self-contained HTML page (or --json model)
 skm explain  <skill> [--json]      # source root, scoping, placements, visibility/bleed
-skm root     add|list|remove <path>
+skm adopt    custom-agents [--agents-home dir]
+skm root     list
+skm root     add <path> [public|private]
+skm root     remove <name|path>
+skm deploy   <dir> --family <name> [--family <name> ...]
+skm upstream sync
 ```
 
 Project-family deploys are now the `skm deploy` verb (ADR 0014 decision 3);
 the bash `deploy-project-skills.sh` path was retired at the ADR 0014 final
 commit (§10, phase 6).
 
-Conventions (ADR 0006): `plan` never mutates; `apply --plan` executes
+Conventions (ADRs 0006 and 0014): `plan` never mutates; `apply --plan` executes
 exactly the reviewed plan; exit codes 0/1/2; `--json` on every verb;
-append-only audit log; deletion restricted to state-file-owned artifacts;
-Hermes stays add-only by the same universal rule.
-
-Dogfooding: `skills/skills-manager/SKILL.md` ships in this repo (unscoped,
-so every agent gets it) teaching the verbs, "always plan before apply",
-exit-code meanings, and the privacy rules — any agent on any synced machine
-knows how to operate the system.
+append-only audit log; managed `apply` deletion is restricted to state-owned
+artifacts. Upstream sync has a separate catalog/skills-CLI ownership model and
+may remove stale global installs; Hermes remains explicitly add-only.
 
 ## 9. Privacy guards (enforced in code, not convention)
 
@@ -332,9 +352,10 @@ knows how to operate the system.
   carry state-file hashes and provenance.
 - `apply` refuses to place a private artifact inside any git worktree whose
   `origin` is not allowlisted.
-- `doctor` scans agent dirs for private content in unexpected locations
-  (copies matching private-source hashes, symlinks resolving into
-  unregistered repos) and reports `unsafe`.
+- `doctor` scans skill dirs for private native/composed content in unexpected
+  locations (matching supported source/render hashes or symlinks into
+  unregistered repos) and reports `unsafe`. Agent-definition and tprompt export
+  fingerprinting are not yet part of that unmanaged-copy scan.
 - This repo's CI/pre-commit: no symlinks escaping the repo under `skills/`,
   grep-guard for private-root path fragments.
 
@@ -385,9 +406,9 @@ phases 6/7.)
 
 ## 11. Deferred / explicitly not-v1
 
-- Per-host layering, machine profiles, fleet state mirroring into the
-  private repo (`apply --record`) — revisit only after single-machine
-  correctness is proven (ADR 0005).
+- Hostname-selected profiles and fleet-state mirroring (`apply --record`) are
+  deferred. Machine-local registered roots, including a last-wins override root,
+  are implemented (ADRs 0005 and 0015).
 - TUI — `plan`/`status` human output first; a TUI is a renderer over
   `status --json` if ever wanted.
 - npm publishing of the CLI; repo-local execution suffices.
@@ -400,7 +421,3 @@ phases 6/7.)
   on this machine. (Droid shared-dir read: resolved, user-verified yes.)
 - Claude Code clone under `~/code/upstream` is ~3 months stale; refresh
   before trusting its frontmatter field list over current docs.
-- CLI name: **`skm`** (decided). Private repo name still open.
-- Whether `catalog/agent-scopes.json` vs SKILL.md `metadata` is the scoping
-  source of truth for public skills (manifest keeps SKILL.md spec-pure;
-  frontmatter keeps scoping next to content — currently leaning manifest).

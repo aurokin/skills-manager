@@ -43,7 +43,7 @@ main() {
 
     if [ "$required_count" -ne 1 ] || ! grep -q '^## Default Sections$' "$upstream_tmp"; then
         warn "upstream structure changed; expected attribution and default section headings were not found"
-        return 0
+        return 1
     fi
 
     awk '
@@ -71,7 +71,7 @@ main() {
 
     if grep -q 'Commit Attribution' "$patched_tmp" || grep -q 'Co-Authored-By' "$patched_tmp"; then
         warn "patch did not fully remove commit attribution content; leaving existing file unchanged"
-        return 0
+        return 1
     fi
 
     "$SCRIPT_DIR/test-agents-md.sh" "$patched_tmp"

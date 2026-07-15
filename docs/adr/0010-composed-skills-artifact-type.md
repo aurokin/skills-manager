@@ -41,8 +41,10 @@ A third artifact type: **`composed-skill`**.
   progressively disclosed reference) + optional `consumers/<c>.md`
   (marker-split into a pre-table gate section and an end-of-body
   appendix).
-- Single sources of truth, no parallel registries: the provider set is
-  the filenames under `providers/`; models live only in provider
+- Original provider rule, **superseded by ADR 0012**: the provider set was
+  the filenames under `providers/`. The current declared set is derived from
+  dimension candidates and may resolve from local files or the shared pool;
+  models still live only in provider
   frontmatter; the consumer's "self" provider is derived from the
   registry `ownDir` (not declared). Guards, because ownDir↔provider-id
   alignment is a coincidence of the v1 set (droid's ownDir is `factory`):

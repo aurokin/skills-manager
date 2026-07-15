@@ -30,10 +30,10 @@ should stay host-agnostic and let the user juggle the host layer.
    what each machine's `~/.config/skills-manager/config.json` contains —
    which the user may or may not manage through dotfiles, per host, exactly
    as they do today for zsh.
-3. The gitignored `.skills.local.json` overlay in this repo is retained for
-   backward compatibility during migration and remains the "quick personal
-   tweak" layer, merged last; its long-term contents fold into the XDG
-   config.
+3. The gitignored `.skills.local.json` quick-tweak file remains separate from
+   machine config. ADR 0014 fixed its current role: it supplies validated
+   upstream-sync and project-family overrides when present; it is not a root or
+   agent-selection layer and is not scheduled to fold into XDG config.
 
 Single-machine correctness must be fully proven before any multi-host
 layering (profiles, fleet state mirroring) is considered; those ideas are

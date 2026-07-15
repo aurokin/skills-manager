@@ -47,7 +47,7 @@ definitions.
    ownership and pruning; file drop is tprompt's documented discovery
    surface and keeps tprompt dependency-free of skm.
 4. **Rendering fixes**: no subprocess scaffolding (skm writes the file
-   atomically itself); the "Do not use subagents" footer applies only to
+   itself through the normal apply path); the "Do not use subagents" footer applies only to
    agent-definition-derived prompts (configurable off), never to
    skill-derived prompts; every exported prompt is stamped with tags
    `[skm, agent-def|skill]` in addition to declared tags so the flat

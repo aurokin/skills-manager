@@ -1,7 +1,7 @@
 # Plan: Absorb custom_agents into skm (agent definitions + tprompt export)
 
-- Status: draft for implementation (next phase after `feat/skm-cli`)
-- Date: 2026-07-10
+- Status: completed; retained as the historical migration plan
+- Date: 2026-07-10 (completed 2026-07)
 - Decisions: [ADR 0007](adr/0007-agent-definitions-artifact-type.md) (agent
   definitions as artifact type), [ADR 0008](adr/0008-tprompt-export.md)
   (tprompt export channel), [ADR 0009](adr/0009-dialect-document-emitter-rendering.md)
@@ -18,7 +18,7 @@ must be genuinely ported is the **schema** and the **renderers**.
 
 ### Source schema (port in full)
 
-`agent.yaml` top-level keys: `name`, `description`, `export`
+`agent.yaml` top-level keys: `name`, `description`, `review-note`, `export`
 (`agent|skill|none`), `defaults` (`sandbox`, `model_strategy`, `skills`),
 per-harness blocks (`claude`, `codex`, `copilot`, `cursor`, `opencode`,
 `gemini`, `tprompt`), `harness` (`include` XOR `exclude`), `skill`.
@@ -49,7 +49,7 @@ Python source, which stays available as the oracle until cutover).
 | codex-toml | `~/.codex/agents/<name>.toml` | `developer_instructions` = full body as TOML multi-line string; ordering scalars→tables→array-tables; `skills.config` merge + dedup |
 | copilot-agent-md | `~/.copilot/agents/<name>.agent.md` (`$COPILOT_HOME` honored) | hyphenated keys; target-dependent fields |
 | cursor-md | `~/.cursor/agents/<name>.md` | `readonly` resolved from sandbox |
-| opencode-md | `~/.config/opencode/agents/<name>.md` | **no `name` key**; `mode` default `subagent`; resolved `permission` |
+| opencode-md | `~/.config/opencode/agent/<name>.md` | **no `name` key**; `mode` default `subagent`; resolved `permission` |
 | gemini-md | `~/.gemini/agents/<name>.md` | `mcpServers` |
 | (skill export) | standard skill pipeline (render-only) | `# {title}` + `## Instructions` + `## Source Notes` body shape; `metadata.source: custom_agents` becomes `skm`; hermes adds `metadata.hermes`. **Exempt from byte-equality**: semantic equality with declared substitutions (source string, "shared agent" wording), since ADR 0007 renames the generator strings |
 
@@ -101,8 +101,7 @@ opt-in only), then tprompt drops without a `tprompt:` block. In skm:
 
 ### State/manifest adoption
 
-One-time `skm adopt custom-agents` (or automatic on first plan when the
-manifest exists): read manifest **v2** at
+One-time, explicit `skm adopt custom-agents`: read manifest **v2** at
 `$XDG_STATE_HOME/custom_agents/.shared-agents-manifest.json` **and** the
 legacy in-repo location `<agents_home>/.shared-agents-manifest.json` (the
 Python `load_manifest` still reads both; entries recorded only in the
@@ -137,10 +136,13 @@ memory, write the current version; never hard-fail on an older state file
 - Availability: `tprompt` binary on PATH; otherwise plan lists the channel
   as unavailable with a note, and existing owned prompt placements are left
   untouched (never pruned due to unavailability).
-- No subprocess use; atomic writes; placements owned in state like any
+- No subprocess use; writes through the normal apply path; placements owned in state like any
   other.
 
-## 3. Phases
+## 3. Completed phases
+
+The descriptions below preserve the pre-implementation acceptance criteria;
+all five phases shipped before the `custom_agents` cutover.
 
 Same delivery process as `feat/skm-cli`: each phase is an adversarially
 reviewed workflow (multi-lens review + refutation panels), diffwarden gate
@@ -214,15 +216,10 @@ tests only, read-only verbs against the real machine.
 - **`~/.agents/agents` canonical link** — dropped per ADR 0007 unless
   evidence of a consumer; `doctor` flags a leftover one as foreign.
 
-## 5. Open questions
+## 5. Resolved at cutover
 
-- Whether `skm adopt custom-agents` runs automatically on first plan
-  (convenient) or stays an explicit verb (predictable). Leaning explicit.
-- Repo rename (this repo is no longer only skills) — cosmetic, decide with
-  the private-repo naming.
-- **Phase-1 blocker (not cosmetic):** which of Gemini/Copilot/Cursor/
-  OpenCode actually read their `agents/` dirs in current releases
-  (custom_agents predates several harness changes), and whether any
-  harness reads *another* harness's agents dir (the no-bleed assumption in
-  §1 needs evidence). Resolving this fixes the dialect set and the phase-5
-  reap list.
+- Adoption is the explicit `skm adopt custom-agents` verb; `plan` never adopts
+  legacy manifest entries implicitly.
+- The repository was renamed `skills-manager`; the CLI remains `skm`.
+- Current agent-definition directories, dialects, and served-via relationships
+  are recorded in `registry/agents.json`; tests cover all enabled renderers.
