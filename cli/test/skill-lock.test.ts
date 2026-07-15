@@ -89,6 +89,14 @@ describe("loadSkillLock", () => {
     expect(Object.keys(lock.entries)).toHaveLength(0);
   });
 
+  test("an array skills collection degrades, not loads-empty", () => {
+    writeLock(JSON.stringify({ version: 3, skills: [] }));
+    const lock = loadSkillLock(sb.env);
+    expect(lock.status).toBe("degraded");
+    expect(lock.reason).toContain("skills");
+    expect(Object.keys(lock.entries)).toHaveLength(0);
+  });
+
   test("a record missing skillFolderHash is skipped; the rest stay usable", () => {
     const good = {
       source: "openai/skills",

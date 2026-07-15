@@ -119,7 +119,9 @@ export function loadSkillLock(env: SkmEnv): SkillLock {
       reason: `unsupported lock version ${JSON.stringify(root.version)} (expected ${LOCK_VERSION})`,
     };
   }
-  if (typeof root.skills !== "object" || root.skills === null) {
+  if (typeof root.skills !== "object" || root.skills === null || Array.isArray(root.skills)) {
+    // An array passes typeof "object": reject it so a malformed ledger degrades
+    // loudly instead of loading as a valid-but-empty lock.
     return { status: "degraded", entries, reason: "lock has no skills object" };
   }
 
