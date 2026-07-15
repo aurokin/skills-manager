@@ -12,8 +12,8 @@ engine per `docs/skills-manager-design.md` and the ADRs in `docs/adr/`. It
 adds agent-scoped skills (registry-driven placement, `registry/agents.json`),
 private overlay repos, plan/apply with an ownership state file, per-agent
 frontmatter rendering, and composed skills (per-consumer rendered skill
-trees, ADR 0010). Until migration phase 6 completes, the bash scripts
-remain authoritative for upstream-skill sync; `skm` owns local-skill
+trees, ADR 0010). Until migration phase 7's vendoring path exists, the bash
+scripts remain authoritative for upstream-skill sync; `skm` owns local-skill
 placement, scoping, composed-skill rendering, and drift detection. See
 `cli/README.md`.
 
@@ -96,6 +96,26 @@ then places it (as rendered trees, never symlinks) only into agents whose regist
 
 Create `agents/<name>/agent.yaml` + `agents/<name>/instructions.md`, then run
 `skm plan` / `skm apply` (from `cli/`, via `bun`).
+
+## Disabling an Agent Definition on One Host
+
+In the machine-local override root (registered last in the machine config, e.g.
+`~/.config/skills-manager/local-root`), create a complete stub — the loader
+requires `name`, `description`, and a non-empty `instructions.md` beside the
+yaml:
+
+```yaml
+# agents/<name>/agent.yaml
+name: <name>
+description: Host-local disable stub.
+export: none
+```
+
+plus `agents/<name>/instructions.md` (one line is enough). Later-root-wins
+makes it the effective definition on that host only; run `skm apply --prune`
+to remove its rendered placements. The
+review console shows the unit as disabled while keeping the shadowed
+definition reviewable. See ADR 0015.
 
 ## Adding a New Composed Skill
 
