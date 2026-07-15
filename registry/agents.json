@@ -13,7 +13,7 @@
     "cursor": { "path": "~/.cursor/skills" },
     "grok": { "path": "~/.grok/skills" },
     "factory": { "path": "~/.factory/skills" },
-    "antigravity": { "path": "~/.gemini/config/skills", "note": "Variant-inconsistent upstream; this is the dir documented as read by all variants." },
+    "antigravity": { "path": "~/.gemini/config/skills", "note": "Antigravity global-skills root, empirically read by the CLI variant (agy v1.1.2, 2026-07-15) and documented for the Antigravity 2.0 app; other variants read variant-specific extras (legacy ~/.gemini/skills, CLI ~/.gemini/antigravity-cli/skills). Evidence: antigravity.google/docs/skills, docs/cli/plugins, docs/cli/gcli-migration." },
     "hermes": { "path": "~/.hermes/skills" }
   },
   "agents": {
@@ -205,14 +205,17 @@
       "maybeReads": ["gemini"],
       "ownDir": "antigravity",
       "dialect": "spec",
-      "symlinks": "unknown",
-      "evidence": "Docs: antigravity.google/docs/skills — ~/.gemini/config/skills read by all variants; the CLI variant additionally reads ~/.gemini/skills (hence maybe-read of gemini's own dir); no evidence of home-level ~/.agents read.",
-      "agentDefSupport": "unknown",
-      "agentDefEvidence": "No agent-definition-directory evidence gathered in the AUR-614 passes for antigravity. Unknown; do not assume support.",
+      "symlinks": "followed",
+      "evidence": "Empirical probe of agy v1.1.2 (2026-07-15): global skills are discovered folder+SKILL.md across three roots — ~/.gemini/config/skills (own dir, also documented for the Antigravity 2.0 app), legacy ~/.gemini/skills (the gemini dir → maybe-read), and CLI ~/.gemini/antigravity-cli/skills (appDataDir, not modeled — no other agent reads it, so a directory entry would carry no deny-guarantee weight). A symlinked folder in ~/.gemini/config/skills is followed (verified: canary symlink surfaced in `agy --print` skill list). Home-level ~/.agents/skills is NOT read (confirmed). Config/skills is read per-variant, not 'by all variants' as previously claimed. Evidence: antigravity.google/docs/skills, docs/cli/plugins, docs/cli/gcli-migration.",
+      "agentDefSupport": "supported",
+      "agentDefVia": "gemini-cli",
+      "agentDefEvidence": "agy v1.1.2 `agy agents` discovers flat <name>.md and <name>/agent.md in ~/.gemini/agents/ and ~/.gemini/config/agents/ (empirical 2026-07-15); skm's gemini render in ~/.gemini/agents/ is discovered as-is. Served via the gemini render — no separate antigravity render channel (avoids duplicate discovery of the same agent from two dirs). Officially documented frontmatter: name + description only; extra fields tolerated.",
       "skillInvocation": {
-        "userInvocation": "unknown",
-        "gate": "unknown",
-        "evidence": "Not probed in wf_a88d05f6-9b9; no gating evidence gathered. Treat as no-gate for placement guarantees."
+        "userInvocation": "none",
+        "gate": "none",
+        "evidence": "Empirical probe of agy v1.1.2 (2026-07-15) + docs antigravity.google/docs/skills: SKILL.md frontmatter is name (optional) + description (required) only; no disable-model-invocation or any skill-gating field exists. Antigravity's permissions engine gates tools, not skills. No per-skill user invocation. Treat as a no-gate agent (ADR 0011) → gated skills are never placed for it.",
+        "probedVersion": "1.1.2",
+        "probedOn": "2026-07-15"
       }
     },
     "hermes": {

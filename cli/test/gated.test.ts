@@ -74,7 +74,7 @@ describe("solveGated — placement matrix", () => {
   test("unscoped: only gate-honoring agents, each a rendered tree in its own dir", () => {
     const r = solvePlacements(gatedDesired("fleet-update"), ALL_ENABLED, reg());
     // Gate-honoring agents in the real registry (frontmatter or companion); no-gate
-    // (gemini-cli, opencode) and unknown (antigravity) are excluded.
+    // agents (gemini-cli, opencode, antigravity) are excluded.
     expect(r.placements.map((p) => p.dir).sort()).toEqual([
       "claude",
       "codex",
@@ -88,6 +88,8 @@ describe("solveGated — placement matrix", () => {
     // Never the shared root, never a symlink.
     expect(r.placements.some((p) => p.dir === "shared")).toBe(false);
     expect(r.placements.some((p) => p.kind === "symlink")).toBe(false);
+    // antigravity is a no-gate agent (ADR 0011) → gated skills are never placed for it.
+    expect(r.placements.some((p) => p.agent === "antigravity" || p.dir === "antigravity")).toBe(false);
   });
 
   test("no-gate agents are excluded silently (not unreachable)", () => {

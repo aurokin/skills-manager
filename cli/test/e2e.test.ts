@@ -106,6 +106,34 @@ describe("fresh apply", () => {
     expect(claudePlacement?.kind).toBe("rendered");
     expect(typeof claudePlacement?.hash).toBe("string");
   });
+
+  test("unscoped skill lands as a symlink in antigravity's own dir when enabled", async () => {
+    const root = makeRoot(sb, "public");
+    const unscoped = makeSkill(root.path, "ag-skill");
+    writeMachineConfig(sb, {
+      version: 1,
+      roots: [root],
+      agents: ["claude-code", "antigravity"],
+    });
+
+    const outcome = await runApply(sb.env, opts());
+    expect(outcome.exitCode).toBe(0);
+
+    // antigravity does not read the shared dir → it gets its own-dir symlink.
+    expect(isSymlinkTo(homePath(".gemini/config/skills/ag-skill"), unscoped)).toBe(true);
+    // Still also placed in shared + claude.
+    expect(isSymlinkTo(homePath(".agents/skills/ag-skill"), unscoped)).toBe(true);
+    expect(isSymlinkTo(homePath(".claude/skills/ag-skill"), unscoped)).toBe(true);
+
+    const state = loadState(sb.env);
+    const agPlacement = state.artifacts["skill:ag-skill"]!.placements.find((p) => p.agent === "antigravity");
+    expect(agPlacement).toBeDefined();
+    expect(agPlacement?.kind).toBe("symlink");
+
+    // Re-plan is a clean noop (the antigravity placement is adopted/owned, not re-created).
+    const replan = await runPlan(sb.env, opts());
+    expect(replan.exitCode).toBe(0);
+  });
 });
 
 // ── 2. re-apply idempotence ───────────────────────────────────────────────────

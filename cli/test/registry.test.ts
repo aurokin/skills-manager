@@ -83,6 +83,62 @@ describe("agent-definition field validation", () => {
     expect(reg.agents.codex!.agentDefDialect).toBe("codex");
     expect(reg.agents.pi!.agentDefSupport).toBe("none");
     expect(reg.agents.grok!.agentDefSupport).toBe("unknown");
+    // antigravity is supported but served via gemini-cli's render — no own dir/dialect.
+    expect(reg.agents.antigravity!.agentDefSupport).toBe("supported");
+    expect(reg.agents.antigravity!.agentDefVia).toBe("gemini-cli");
+    expect(reg.agents.antigravity!.agentDefDir).toBeUndefined();
+    expect(reg.agents.antigravity!.agentDefDialect).toBeUndefined();
+  });
+
+  /** baseRegistry with `claudey` turned into a real agent-def renderer (a valid via target). */
+  function regWithRenderer(): Registry {
+    const reg = baseRegistry();
+    reg.agents.claudey!.agentDefSupport = "supported";
+    reg.agents.claudey!.agentDefDir = "~/.claudey/agents";
+    reg.agents.claudey!.agentDefDialect = "claude";
+    reg.agents.claudey!.agentDefEvidence = "renderer";
+    return reg;
+  }
+
+  test("a served-via (agentDefVia) supported agent needs no dir/dialect", () => {
+    const reg = regWithRenderer();
+    reg.agents.alpha!.agentDefSupport = "supported";
+    reg.agents.alpha!.agentDefVia = "claudey";
+    reg.agents.alpha!.agentDefEvidence = "served by claudey";
+    expect(() => validateRegistry(reg)).not.toThrow();
+  });
+
+  test("a served-via supported agent must not also declare its own dir", () => {
+    const reg = regWithRenderer();
+    reg.agents.alpha!.agentDefSupport = "supported";
+    reg.agents.alpha!.agentDefVia = "claudey";
+    reg.agents.alpha!.agentDefDir = "~/.alpha/agents";
+    reg.agents.alpha!.agentDefEvidence = "served by claudey";
+    expect(() => validateRegistry(reg)).toThrow(/must not declare agentDefDir/);
+  });
+
+  test("agentDefVia requires an explicit supported status", () => {
+    const reg = regWithRenderer();
+    // agentDefSupport omitted while agentDefVia is set → incoherent, must be rejected.
+    reg.agents.alpha!.agentDefVia = "claudey";
+    reg.agents.alpha!.agentDefEvidence = "served by claudey";
+    expect(() => validateRegistry(reg)).toThrow(/agentDefSupport is not 'supported'/);
+  });
+
+  test("agentDefVia must reference a real agent-def renderer", () => {
+    const reg = baseRegistry(); // claudey is NOT a renderer here
+    reg.agents.alpha!.agentDefSupport = "supported";
+    reg.agents.alpha!.agentDefVia = "claudey";
+    reg.agents.alpha!.agentDefEvidence = "served by claudey";
+    expect(() => validateRegistry(reg)).toThrow(/must reference an agent with its own agent-definition render channel/);
+  });
+
+  test("none support must not declare agentDefVia", () => {
+    const reg = baseRegistry();
+    reg.agents.alpha!.agentDefSupport = "none";
+    reg.agents.alpha!.agentDefVia = "claudey";
+    reg.agents.alpha!.agentDefEvidence = "test";
+    expect(() => validateRegistry(reg)).toThrow(/must not declare agentDefDir, agentDefDialect, or agentDefVia/);
   });
 
   test("a supported agentDef requires agentDefDir", () => {
@@ -161,8 +217,10 @@ describe("skillInvocation field validation", () => {
     expect(reg.agents.codex!.skillInvocation!.gate).toBe("companion:agents/openai.yaml");
     expect(reg.agents.codex!.skillInvocation!.userInvocation).toBe("mention");
     expect(reg.agents.opencode!.skillInvocation!.gate).toBe("none");
-    expect(reg.agents.antigravity!.skillInvocation!.gate).toBe("unknown");
-    expect(reg.agents.antigravity!.skillInvocation!.probedVersion).toBeUndefined();
+    // antigravity: no skill-gating field exists in SKILL.md (probe agy v1.1.2) → no-gate.
+    expect(reg.agents.antigravity!.skillInvocation!.gate).toBe("none");
+    expect(reg.agents.antigravity!.skillInvocation!.userInvocation).toBe("none");
+    expect(reg.agents.antigravity!.skillInvocation!.probedVersion).toBe("1.1.2");
     expect(reg.agents.aider!.skillInvocation).toBeUndefined();
   });
 

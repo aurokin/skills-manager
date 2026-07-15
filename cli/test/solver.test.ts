@@ -24,12 +24,29 @@ function desired(
 const defaultConfig: MachineConfig = { version: 1, roots: [] };
 
 describe("solvePlacements — unscoped", () => {
-  test("places into shared + claude, both symlinks, no hermes by default", () => {
+  test("places into shared + claude + antigravity, all symlinks, no hermes by default", () => {
     const r = solvePlacements(desired("alpha"), defaultConfig, reg());
     const dirs = r.placements.map((p) => p.dir).sort();
-    expect(dirs).toEqual(["claude", "shared"]);
+    // antigravity is default-enabled and does NOT read the shared dir, so it gets its
+    // own-dir symlink alongside claude (which also skips shared).
+    expect(dirs).toEqual(["antigravity", "claude", "shared"]);
     expect(r.placements.every((p) => p.kind === "symlink")).toBe(true);
     expect(r.unreachable).toEqual([]);
+  });
+
+  test("antigravity gets its own-dir symlink, keyed to its registry dir", () => {
+    const r = solvePlacements(desired("alpha"), defaultConfig, reg());
+    const ag = r.placements.find((p) => p.dir === "antigravity");
+    expect(ag).toBeDefined();
+    expect(ag!.agent).toBe("antigravity");
+    expect(ag!.kind).toBe("symlink");
+    expect(ag!.path).toBe("~/.gemini/config/skills/alpha");
+  });
+
+  test("no antigravity placement when antigravity is not enabled", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code"] };
+    const r = solvePlacements(desired("alpha"), config, reg());
+    expect(r.placements.some((p) => p.dir === "antigravity")).toBe(false);
   });
 
   test("hermes gets an add-only placement only when enabled", () => {
@@ -90,6 +107,20 @@ describe("solvePlacements — allow", () => {
     expect(p.dir).toBe("codex");
     expect(p.deprecated).toBe(true);
     expect(p.bleed).toEqual(["cursor"]);
+  });
+
+  test("allow antigravity lands in its own dir as a symlink, no shared", () => {
+    const r = solvePlacements(
+      desired("drive", { scoping: { allow: ["antigravity"] } }),
+      defaultConfig,
+      reg(),
+    );
+    expect(r.placements.map((p) => p.dir)).toEqual(["antigravity"]);
+    const p = r.placements[0]!;
+    expect(p.agent).toBe("antigravity");
+    expect(p.kind).toBe("symlink");
+    expect(r.placements.some((x) => x.dir === "shared")).toBe(false);
+    expect(r.unreachable).toEqual([]);
   });
 
   test("allow aider is unreachable (no readable dir), no placements", () => {
