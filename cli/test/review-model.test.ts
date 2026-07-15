@@ -10,7 +10,7 @@ import { loadContext } from "../src/context";
 import { buildReviewModel } from "../src/review/model";
 import type { VerbOptions } from "../src/types";
 import { stringify } from "yaml";
-import { type Sandbox, makeComposed, makeRoot, makeSandbox, makeSkill, writeMachineConfig } from "./util";
+import { type Sandbox, makeAgentDef, makeComposed, makeRoot, makeSandbox, makeSkill, writeMachineConfig } from "./util";
 
 function providerText(name: string, cli: string): string {
   return `---\n${stringify({ name, cli, models: { m1: { default: true } } })}---\n\n# ${name}\n\nAnti-recursion: {{provider_clis}}.\n`;
@@ -169,6 +169,54 @@ describe("review model", () => {
     // The surviving agent's variant is still present and clean.
     const codex = gated?.variants.find((v) => v.key === "codex");
     expect(codex?.deployed?.status).toBe("clean");
+  });
+
+  test("export:skill defs join placements under the derived name; export:agent files hit inventory", async () => {
+    const root = makeRoot(sb, "public");
+    // The name-mismatch case the placement join must survive: def dir
+    // helper-agent, derived skill review-helper (recorded under the latter).
+    makeAgentDef(root.path, "helper-agent", {
+      agentYaml: {
+        export: "skill",
+        skill: { name: "review-helper", title: "Review Helper", description: "Use when reviewing." },
+      },
+      instructions: "Review the patch.\n",
+    });
+    makeAgentDef(root.path, "plain-agent", {});
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code", "codex"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+
+    const derived = model.units.find((u) => u.id === "agent-helper-agent");
+    expect(derived?.placements.length ?? 0).toBeGreaterThan(0);
+    expect(derived?.placements.every((d) => d.status === "clean")).toBe(true);
+    // Rendered trees are directories: their content must load into variants.
+    const deployVariant = derived?.variants.find((v) => v.key !== "source");
+    expect(deployVariant?.files.some((f) => f.path === "SKILL.md" && f.content.includes("Review Helper"))).toBe(true);
+
+    // export:agent renders plain files — inventory must attribute them.
+    const agentsDir = model.inventory.find((d) => d.path.endsWith(".claude/agents"));
+    const renderedFile = agentsDir?.entries.find((e) => e.name === "plain-agent.md");
+    expect(renderedFile?.kind).toBe("rendered");
+    expect(renderedFile?.label).toBe("skm-rendered file");
+  });
+
+  test("source trees with symlinked and broken directories do not break the walk", async () => {
+    const root = makeRoot(sb, "public");
+    const dir = makeSkill(root.path, "plain-skill", { body: "plain body" });
+    const outside = path.join(sb.home, "outside-dir");
+    fs.mkdirSync(outside, { recursive: true });
+    fs.writeFileSync(path.join(outside, "inner.md"), "linked content\n");
+    fs.symlinkSync(outside, path.join(dir, "linked"));
+    fs.symlinkSync(path.join(sb.home, "does-not-exist"), path.join(dir, "dangling"));
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const files = model.units.find((u) => u.name === "plain-skill")?.variants[0]?.files ?? [];
+    expect(files.some((f) => f.path === "linked/inner.md")).toBe(true);
+    expect(files.some((f) => f.path.startsWith("dangling"))).toBe(false);
   });
 
   test("model is stable across runs (modulo clock)", async () => {

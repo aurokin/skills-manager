@@ -106,8 +106,10 @@ function listTree(root: string): ReviewFile[] {
     for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const abs = path.join(dir, e.name);
       const r = rel ? `${rel}/${e.name}` : e.name;
-      if (e.isDirectory()) walk(abs, r);
-      else out.push({ path: r, content: fs.readFileSync(abs, "utf8") });
+      // Classify by stat (follows symlinks) so a symlinked directory walks
+      // instead of hitting readFileSync; broken links are skipped, not fatal.
+      if (isDir(abs)) walk(abs, r);
+      else if (isFile(abs)) out.push({ path: r, content: fs.readFileSync(abs, "utf8") });
     }
   };
   walk(root, "");
@@ -139,11 +141,20 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
   const solved = computeDesiredPlacements(env, config, registry, desired);
   const findings = computeDrift(env, config, registry, desired, state);
   const driftByPath = new Map(findings.map((f) => [path.resolve(f.path), { drift: f.drift, detail: f.detail }]));
-  const placementsBySkill = new Map<string, DesiredPlacement[]>();
+  // Group by artifact identity, not bare name: a native skill, an agent
+  // definition, and its derived skill may all share a name. export:skill
+  // placements are recorded under derivedSkillName but belong to their def.
+  const skillPlacements = new Map<string, DesiredPlacement[]>();
+  const agentDefPlacements = new Map<string, DesiredPlacement[]>();
+  const composedPlacements = new Map<string, DesiredPlacement[]>();
   for (const dp of solved.placements) {
-    const key = dp.skill;
-    if (!placementsBySkill.has(key)) placementsBySkill.set(key, []);
-    placementsBySkill.get(key)!.push(dp);
+    const bucket = dp.desiredAgentDef
+      ? { map: agentDefPlacements, key: dp.desiredAgentDef.name }
+      : dp.desiredComposed
+        ? { map: composedPlacements, key: dp.skill }
+        : { map: skillPlacements, key: dp.skill };
+    if (!bucket.map.has(bucket.key)) bucket.map.set(bucket.key, []);
+    bucket.map.get(bucket.key)!.push(dp);
   }
 
   const rootByName = new Map(config.roots.map((r) => [r.name, r]));
@@ -191,7 +202,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       { key: "source", label: "Source", root: tilde(env, skill.source.path), files: listTree(skill.source.path) },
     ];
     const placements: ReviewDeployed[] = [];
-    for (const dp of placementsBySkill.get(skill.name) ?? []) {
+    for (const dp of skillPlacements.get(skill.name) ?? []) {
       const p = dp.placement;
       const deployed = joinDrift(driftByPath, env, p.path);
       placements.push(deployed);
@@ -234,11 +245,10 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
         };
       }
     }
-    const composedPlacements = (placementsBySkill.get(skill.name) ?? []).map((dp) =>
-      joinDrift(driftByPath, env, dp.placement.path),
-    );
+    const skillDps = composedPlacements.get(skill.name) ?? [];
+    const joinedPlacements = skillDps.map((dp) => joinDrift(driftByPath, env, dp.placement.path));
     const matrixConsumers = consumers.map((c) => {
-      const dp = (placementsBySkill.get(skill.name) ?? []).find((p) => String(p.placement.agent) === c);
+      const dp = skillDps.find((p) => String(p.placement.agent) === c);
       return dp ? { key: c, deployed: joinDrift(driftByPath, env, dp.placement.path) } : { key: c };
     });
     units.push({
@@ -250,7 +260,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
         { key: "source", label: "Source", root: tilde(env, skill.source.path), files: listTree(skill.source.path) },
       ],
       matrix: { consumers: matrixConsumers, postures, sourcePosture: skill.posture, cells },
-      placements: composedPlacements,
+      placements: joinedPlacements,
     });
   }
 
@@ -260,17 +270,22 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       { key: "source", label: "Source", root: tilde(env, def.source.path), files: listTree(def.source.path) },
     ];
     const defPlacements: ReviewDeployed[] = [];
-    for (const dp of placementsBySkill.get(def.name) ?? []) {
+    for (const dp of agentDefPlacements.get(def.name) ?? []) {
       const p = dp.placement;
       const deployed = joinDrift(driftByPath, env, p.path);
       defPlacements.push(deployed);
-      // Variant even when the render is absent or wrong-typed: the deployed
-      // chip must surface the drift; files stay empty when unreadable.
+      // Variant even when the render is absent: the deployed chip must
+      // surface the drift; files stay empty when unreadable. export:skill
+      // renders are directory trees, export:agent renders are single files.
       variants.push({
         key: `${p.agent}`,
         label: `${p.agent}`,
         root: tilde(env, p.path),
-        files: isFile(p.path) ? [{ path: path.basename(p.path), content: fs.readFileSync(p.path, "utf8") }] : [],
+        files: isDir(p.path)
+          ? listTree(p.path)
+          : isFile(p.path)
+            ? [{ path: path.basename(p.path), content: fs.readFileSync(p.path, "utf8") }]
+            : [],
         deployed,
       });
     }
@@ -290,8 +305,12 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
   for (const [dirId, dir] of Object.entries(registry.directories)) {
     dirIds.set(expandTilde(env, dir.path), dirId);
   }
+  // Recorded placement paths: ownership evidence for inventory attribution.
+  // A name match alone proves nothing — the same-named dir elsewhere is foreign.
+  const statePlacementPaths = new Set<string>();
   for (const artifact of Object.values(state.artifacts)) {
     for (const p of artifact.placements ?? []) {
+      statePlacementPaths.add(path.resolve(p.path));
       const parent = path.dirname(p.path);
       if (!dirIds.has(parent)) dirIds.set(parent, tilde(env, parent));
     }
@@ -313,10 +332,14 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       if (name.startsWith(".")) continue;
       const abs = path.join(dirPath, name);
       const st = fs.lstatSync(abs);
-      if (!st.isSymbolicLink() && !st.isDirectory()) continue;
       let kind = "dir";
       let label = "unmanaged directory";
-      if (st.isSymbolicLink()) {
+      if (!st.isSymbolicLink() && !st.isDirectory()) {
+        // Plain files: rendered agent definitions land as ~/.claude/agents/foo.md
+        // etc.; anything else in a registered dir is surfaced as unmanaged.
+        kind = statePlacementPaths.has(path.resolve(abs)) ? "rendered" : "file";
+        label = kind === "rendered" ? "skm-rendered file" : "unmanaged file";
+      } else if (st.isSymbolicLink()) {
         let target = "";
         try {
           target = fs.realpathSync(abs);
@@ -337,7 +360,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
             label = `→ ${tilde(env, target)}`;
           }
         }
-      } else if (state.artifacts[`skill:${name}`] || state.artifacts[`composed:${name}`]) {
+      } else if (st.isDirectory() && statePlacementPaths.has(path.resolve(abs))) {
         kind = "rendered";
         label = "skm-rendered (per-agent)";
       } else if (catalog.bySkillName[name]) {
