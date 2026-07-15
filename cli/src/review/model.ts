@@ -7,6 +7,8 @@ import * as path from "node:path";
 import { loadCatalogSpecs } from "../catalog-specs";
 import type { SkmContext } from "../context";
 import { type SkmEnv, expandTilde } from "../env";
+import { verifySkillFolderHash } from "../folder-hash";
+import { loadSkillLock } from "../skill-lock";
 import { computeDesiredPlacements, type DesiredPlacement } from "../placements";
 import { renderComposedSkill, type RenderedComposedTree } from "../composed/render";
 import { PROVIDER_POOL_DIR } from "../composed/source";
@@ -82,6 +84,8 @@ export interface ReviewInvEntry {
   name: string;
   kind: string;
   label: string;
+  /** Explicit attribution caveat, e.g. "modified since install" (ADR 0014). */
+  marker?: string;
   doc?: string;
   drift?: ReviewDeployed;
 }
@@ -93,12 +97,17 @@ export interface ReviewInvDir {
 }
 
 export interface ReviewModel {
-  // Version stays 1: phase-3 diff/onlyOther annotations on cell files are additive.
+  // Version stays 1: phase-3 diff/onlyOther annotations on cell files, and the
+  // ADR 0014 marker/lockDegraded fields, are additive.
   reviewModelVersion: 1;
   built: string;
   machine: string;
   units: ReviewUnit[];
   inventory: ReviewInvDir[];
+  /** Set when the install lock exists but is unreadable (ADR 0014): the page
+   *  shows "lock unreadable; attribution degraded" and every entry falls back
+   *  to catalog expectation. Holds the loader's reason string. */
+  lockDegraded?: string;
   docs: Record<string, { skill: string; files: string[] }>;
 }
 
@@ -448,6 +457,9 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
 
   // ── Installed-now inventory: all registered agents' dirs ∪ state-file dirs ──
   const catalog = loadCatalogSpecs(config.roots);
+  // Installation evidence (ADR 0014): the `skills` CLI's lock. Degraded loads
+  // surface loudly on the model; missing is silent (expectation-only fallback).
+  const lock = loadSkillLock(env);
   const dirIds = new Map<string, string>(); // resolved dir path → display id
   for (const [dirId, dir] of Object.entries(registry.directories)) {
     dirIds.set(expandTilde(env, dir.path), dirId);
@@ -481,6 +493,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       const st = fs.lstatSync(abs);
       let kind = "dir";
       let label = "unmanaged directory";
+      let marker: string | undefined;
       if (!st.isSymbolicLink() && !st.isDirectory()) {
         // Plain files: rendered agent definitions land as ~/.claude/agents/foo.md
         // etc.; anything else in a registered dir is surfaced as unmanaged.
@@ -510,6 +523,25 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       } else if (st.isDirectory() && statePlacementPaths.has(path.resolve(abs))) {
         kind = "rendered";
         label = "skm-rendered (per-agent)";
+      } else if (lock.entries[name]) {
+        // Attested origin (ADR 0014), hash-gated: the lock is the `skills`
+        // CLI's self-report, claimable only while the dir still matches its
+        // recorded skillFolderHash. Otherwise fall back to the catalog
+        // expectation plus an explicit marker — never a silent downgrade,
+        // and never "modified" when the hash merely could not be checked
+        // (empty/foreign hash record, unreadable or empty directory).
+        const rec = lock.entries[name]!;
+        const verdict = verifySkillFolderHash(abs, rec.skillFolderHash);
+        if (verdict === "match") {
+          kind = "attested";
+          label = `attested · ${rec.sourceUrl || rec.source}`;
+        } else {
+          if (catalog.bySkillName[name]) {
+            kind = "upstream";
+            label = `catalog-expected · ${catalog.bySkillName[name]}`;
+          }
+          marker = verdict === "mismatch" ? "modified since install" : "install hash unverifiable";
+        }
       } else if (catalog.bySkillName[name]) {
         kind = "upstream";
         label = `catalog-expected · ${catalog.bySkillName[name]}`;
@@ -520,6 +552,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
         name,
         kind,
         label,
+        marker,
         doc,
         drift: finding ? { path: tilde(env, abs), status: finding.drift, detail: finding.detail } : undefined,
       });
@@ -533,6 +566,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
     machine: env.machineName,
     units,
     inventory,
+    lockDegraded: lock.status === "degraded" ? lock.reason : undefined,
     docs,
   };
 }

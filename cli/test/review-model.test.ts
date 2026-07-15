@@ -7,7 +7,9 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runApply } from "../src/apply";
 import { loadContext } from "../src/context";
+import { gitTreeHash } from "../src/folder-hash";
 import { buildReviewModel, diffCellFiles } from "../src/review/model";
+import { computeDrift } from "../src/status";
 import type { VerbOptions } from "../src/types";
 import { stringify } from "yaml";
 import { type Sandbox, makeAgentDef, makeComposed, makeProviderPool, makeRoot, makeSandbox, makeSkill, writeMachineConfig } from "./util";
@@ -369,6 +371,190 @@ describe("review model", () => {
     // Generated disable note wins; the authored note follows on a new paragraph.
     expect(unit?.note).toContain("export: none");
     expect(unit?.note).toContain("Retired in favor of the composed orchestrate skill.");
+  });
+
+  // ── Attested-origin attribution (ADR 0014, phase 2) ──
+
+  function writeUpstreamDir(name: string): string {
+    const dir = path.join(sb.home, ".agents", "skills", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: up\n---\n\nbody of ${name}\n`);
+    return dir;
+  }
+
+  function lockRecord(hash: string, sourceUrl = "https://github.com/acme/upstream-skills.git") {
+    return {
+      source: "acme/upstream-skills",
+      sourceType: "github",
+      sourceUrl,
+      skillPath: "skills/upstream-skill/SKILL.md",
+      skillFolderHash: hash,
+      installedAt: "2026-04-19T20:58:52.764Z",
+      updatedAt: "2026-04-19T20:58:52.764Z",
+    };
+  }
+
+  function writeLock(skills: Record<string, unknown>): void {
+    fs.writeFileSync(
+      path.join(sb.home, ".agents", ".skill-lock.json"),
+      `${JSON.stringify({ version: 3, skills }, null, 2)}\n`,
+    );
+  }
+
+  test("lock hash match attributes attested origin; sourceUrl label falls back to source", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const upstream = writeUpstreamDir("upstream-skill");
+    const bare = writeUpstreamDir("bare-source-skill");
+    writeLock({
+      "upstream-skill": lockRecord(gitTreeHash(upstream)!),
+      "bare-source-skill": lockRecord(gitTreeHash(bare)!, ""),
+    });
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    expect(model.lockDegraded).toBeUndefined();
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const attested = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(attested?.kind).toBe("attested");
+    expect(attested?.label).toBe("attested · https://github.com/acme/upstream-skills.git");
+    expect(attested?.marker).toBeUndefined();
+    // Empty sourceUrl → the label names the source instead.
+    const bareEntry = shared?.entries.find((e) => e.name === "bare-source-skill");
+    expect(bareEntry?.kind).toBe("attested");
+    expect(bareEntry?.label).toBe("attested · acme/upstream-skills");
+  });
+
+  test("lock hash mismatch falls back to expectation with a modified-since-install marker", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    writeUpstreamDir("upstream-skill"); // in the catalog
+    writeUpstreamDir("rogue-skill"); // not in the catalog
+    const stale = "a".repeat(40);
+    writeLock({ "upstream-skill": lockRecord(stale), "rogue-skill": lockRecord(stale) });
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    // Catalog-expected: attribution downgrades to the expectation, marked.
+    const expected = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(expected?.kind).toBe("upstream");
+    expect(expected?.label).toContain("catalog-expected · acme/upstream-skills");
+    expect(expected?.marker).toBe("modified since install");
+    // No expectation to fall back to: unmanaged, still explicitly marked.
+    const rogue = shared?.entries.find((e) => e.name === "rogue-skill");
+    expect(rogue?.kind).toBe("dir");
+    expect(rogue?.label).toBe("unmanaged directory");
+    expect(rogue?.marker).toBe("modified since install");
+  });
+
+  test("uncheckable lock hashes mark entries unverifiable, never modified", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    // The CLI records "" when it could not compute a hash (still installed fine).
+    writeUpstreamDir("upstream-skill");
+    // A valid recorded hash, but the local dir is empty: local hashing fails.
+    fs.mkdirSync(path.join(sb.home, ".agents", "skills", "hollow-skill"), { recursive: true });
+    writeLock({
+      "upstream-skill": lockRecord(""),
+      "hollow-skill": lockRecord("c".repeat(40)),
+    });
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const noHash = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(noHash?.kind).toBe("upstream");
+    expect(noHash?.label).toContain("catalog-expected · acme/upstream-skills");
+    expect(noHash?.marker).toBe("install hash unverifiable");
+    const hollow = shared?.entries.find((e) => e.name === "hollow-skill");
+    expect(hollow?.kind).toBe("dir");
+    expect(hollow?.marker).toBe("install hash unverifiable");
+  });
+
+  test("unreadable lock degrades loudly on the model; entries fall back to catalog", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    writeUpstreamDir("upstream-skill");
+    fs.writeFileSync(path.join(sb.home, ".agents", ".skill-lock.json"), '{"version": 3, "skills": {"trunc');
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    expect(model.lockDegraded).toContain("invalid JSON");
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const entry = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(entry?.kind).toBe("upstream");
+    expect(entry?.label).toContain("catalog-expected · acme/upstream-skills");
+    expect(entry?.marker).toBeUndefined();
+  });
+
+  test("lock silence keeps today's attribution exactly", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    writeUpstreamDir("upstream-skill");
+    writeUpstreamDir("foreign-skill");
+    // Lock present but silent about both dirs (the --full-depth case).
+    const other = writeUpstreamDir("other-skill");
+    writeLock({ "other-skill": lockRecord(gitTreeHash(other)!) });
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const expected = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(expected?.kind).toBe("upstream");
+    expect(expected?.label).toContain("catalog-expected · acme/upstream-skills");
+    expect(expected?.marker).toBeUndefined();
+    const foreign = shared?.entries.find((e) => e.name === "foreign-skill");
+    expect(foreign?.kind).toBe("dir");
+    expect(foreign?.label).toBe("unmanaged directory");
+    expect(foreign?.marker).toBeUndefined();
+  });
+
+  test("drift classification is byte-identical with and without a lock (ADR 0014)", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "gated-skill", {
+      frontmatter: { "disable-model-invocation": true },
+      body: "gated body",
+    });
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    // Real drift to classify (modified rendered tree) plus upstream dirs the
+    // lock would speak about — none of it may reach computeDrift.
+    fs.appendFileSync(path.join(sb.home, ".claude", "skills", "gated-skill", "SKILL.md"), "\ntampered\n");
+    const upstream = writeUpstreamDir("upstream-skill");
+
+    const before = (() => {
+      const ctx = loadContext(sb.env);
+      return JSON.stringify(computeDrift(sb.env, ctx.config, ctx.registry, ctx.desired, ctx.state));
+    })();
+    expect(before).toContain("modified");
+
+    writeLock({
+      "upstream-skill": lockRecord(gitTreeHash(upstream)!), // attested
+      "gated-skill": lockRecord("b".repeat(40)), // mismatching noise
+    });
+    const after = (() => {
+      const ctx = loadContext(sb.env);
+      return JSON.stringify(computeDrift(sb.env, ctx.config, ctx.registry, ctx.desired, ctx.state));
+    })();
+    expect(after).toBe(before);
   });
 
   test("model is stable across runs (modulo clock)", async () => {

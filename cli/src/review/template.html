@@ -9,6 +9,7 @@
     --gated: #A9660C; --gated-soft: #A9660C16;
     --render: #6B5E8C; --render-soft: #6B5E8C1A;
     --danger: #C0392B; --danger-soft: #C0392B1A;
+    --attested: #2E6E9E; --attested-soft: #2E6E9E1A;
     --code-bg: #EDF0EC; --fm-bg: #E9EEE9; --sel: #0E7A5F2E;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
     --ui: "Avenir Next", "Seravek", "Segoe UI", system-ui, sans-serif;
@@ -21,6 +22,7 @@
       --gated: #E0A050; --gated-soft: #E0A05022;
       --render: #A99BD1; --render-soft: #A99BD122;
       --danger: #E06C5A; --danger-soft: #E06C5A22;
+      --attested: #6FA8D6; --attested-soft: #6FA8D622;
       --code-bg: #1A211E; --fm-bg: #1C2521; --sel: #43C79A33;
     }
   }
@@ -31,6 +33,7 @@
     --gated: #A9660C; --gated-soft: #A9660C16;
     --render: #6B5E8C; --render-soft: #6B5E8C1A;
     --danger: #C0392B; --danger-soft: #C0392B1A;
+    --attested: #2E6E9E; --attested-soft: #2E6E9E1A;
     --code-bg: #EDF0EC; --fm-bg: #E9EEE9; --sel: #0E7A5F2E;
   }
   :root[data-theme="dark"] {
@@ -40,6 +43,7 @@
     --gated: #E0A050; --gated-soft: #E0A05022;
     --render: #A99BD1; --render-soft: #A99BD122;
     --danger: #E06C5A; --danger-soft: #E06C5A22;
+    --attested: #6FA8D6; --attested-soft: #6FA8D622;
     --code-bg: #1A211E; --fm-bg: #1C2521; --sel: #43C79A33;
   }
   * { box-sizing: border-box; }
@@ -249,8 +253,11 @@
   .pv.private { background: var(--gated); }
   .pv.rendered { background: var(--render); }
   .pv.upstream { background: var(--ink-3); }
+  .pv.attested { background: var(--attested); }
   .pv.link, .pv.dir, .pv.file { background: var(--line); }
   .pv.broken { background: var(--danger); }
+  /* attribution caveats (ADR 0014): distinct but calm — not drift-level alarm */
+  .chip.marker { color: var(--gated); border-color: var(--gated); background: var(--gated-soft); }
   .inv-legend { display: flex; gap: 16px; flex-wrap: wrap; font-family: var(--mono); font-size: 10.5px; color: var(--ink-2); margin-top: 10px; }
   .inv-table tr.has-doc { cursor: pointer; }
   .inv-table tr.has-doc:hover td { background: var(--accent-soft); }
@@ -558,9 +565,12 @@ function renderInventory() {
     `<div class="title-row"><h2>Installed right now</h2><span class="badge">${invCount} skills</span></div>` +
     `<p class="note">Every skill present in every registered agent skill directory on ${esc(DATA.machine)} at build time. ` +
     `Symlinks are resolved to their origin; rendered dirs are skm-owned per-agent builds. Click a row to read its SKILL.md.</p>` +
+    (DATA.lockDegraded ? `<p class="note"><span class="chip marker" title="${esc(DATA.lockDegraded)}">lock unreadable; attribution degraded</span> ` +
+      `install-lock evidence is unavailable — upstream rows fall back to catalog expectation.</p>` : "") +
     `<div class="inv-legend"><span><span class="pv public"></span>ours · public root</span>` +
     `<span><span class="pv private"></span>ours · private root</span>` +
     `<span><span class="pv rendered"></span>skm-rendered</span>` +
+    `<span><span class="pv attested"></span>attested · install lock</span>` +
     `<span><span class="pv upstream"></span>catalog-expected</span>` +
     `<span><span class="pv broken"></span>broken link</span></div>`;
 
@@ -577,10 +587,11 @@ function renderInventory() {
     `<h3>${esc(d.id)} <span style="color:var(--ink-3);font-weight:400">${esc(d.path)}</span><span class="count">${d.entries.length} skills</span></h3>` +
     `<table class="inv-table">` + d.entries.map((e) => {
       const hasDoc = e.doc && DATA.docs[e.doc];
+      const marker = e.marker ? ` <span class="chip marker">${esc(e.marker)}</span>` : "";
       const drift = e.drift && e.drift.status !== "clean" ? " " + statusChip(e.drift) : "";
       return `<tr class="${hasDoc ? "has-doc" : ""}"${hasDoc ? ` data-doc="${esc(e.doc)}"` : ""}>` +
         `<td class="name"><span class="inv-caret">${hasDoc ? "▶" : ""}</span><span class="pv ${esc(e.kind)}"></span>${esc(e.name)}</td>` +
-        `<td class="prov">${esc(e.label)}${drift}</td></tr>`;
+        `<td class="prov">${esc(e.label)}${marker}${drift}</td></tr>`;
     }).join("") + `</table></section>`
   ).join("");
   $("#content").querySelectorAll("tr.has-doc").forEach((tr) => {
