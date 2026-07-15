@@ -460,9 +460,19 @@ function renderSource(text, ann) {
   let blockOf = null;
   if (ann && ann.mode === "lens") {
     blockOf = new Array(lines.length).fill(null);
-    let fence = false, open = null;
+    // fence = the OPEN delimiter {char, len}; per CommonMark a fence only
+    // closes on the same char at >= the opening length, so a ``` example
+    // nested inside a ```` fence stays inside it.
+    let fence = null, open = null;
     lines.forEach((ln, i) => {
-      if (/^ {0,3}(`{3,}|~{3,})/.test(ln)) { fence = !fence; if (open) blockOf[i] = { p: open, marker: false }; return; }
+      const fm = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(ln);
+      if (fm) {
+        const [ch, len] = [fm[1][0], fm[1].length];
+        if (!fence) fence = { ch, len };
+        else if (ch === fence.ch && len >= fence.len && !fm[2].trim()) fence = null;
+        if (open) blockOf[i] = { p: open, marker: false };
+        return;
+      }
       if (!fence) {
         const pm = /^<!--\s*@posture\s+(\S+)\s*-->\s*$/.exec(ln);
         if (pm) { open = pm[1]; blockOf[i] = { p: open, marker: true }; return; }
