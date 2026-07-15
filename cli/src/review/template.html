@@ -328,63 +328,9 @@ let observer = null;
 const otherPosture = (mx, p) => mx.postures.find((x) => x !== p);
 const unitById = (id) => DATA.units.find((x) => x.id === id);
 
-// ── posture line-diff (LCS), computed in-page from the two compiled cells.
-// Phase 3 (ADR 0013) moves this into the model; phase 2 keeps it here.
-const LCS_CELL_CAP = 2_500_000;
-function lineDiff(a, b) {
-  const n = a.length, m = b.length;
-  if ((n + 1) * (m + 1) > LCS_CELL_CAP) {
-    // Bounded fallback for huge files: set membership instead of the
-    // quadratic LCS table. Approximate (order-blind), flagged as capped.
-    const inB = new Set(b), inA = new Set(a);
-    const exA = new Set();
-    for (let i = 0; i < n; i++) if (!inB.has(a[i])) exA.add(i);
-    const dropped = b.filter((l) => !inA.has(l));
-    return { exA, ghostsForA: dropped.length ? [{ after: n - 1, lines: dropped }] : [], capped: true };
-  }
-  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
-    dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  const exA = new Set();
-  const ghostsForA = [];
-  let i = 0, j = 0, pending = [], lastA = -1;
-  const flush = () => { if (pending.length) { ghostsForA.push({ after: lastA, lines: pending }); pending = []; } };
-  while (i < n && j < m) {
-    if (a[i] === b[j]) { flush(); lastA = i; i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { flush(); exA.add(i); lastA = i; i++; }
-    else { pending.push(b[j]); j++; }
-  }
-  while (i < n) { flush(); exA.add(i); lastA = i; i++; }
-  while (j < m) { pending.push(b[j]); j++; }
-  flush();
-  return { exA, ghostsForA };
-}
-const toRanges = (set) => {
-  const idx = [...set].sort((x, y) => x - y);
-  const out = [];
-  for (const k of idx) {
-    const last = out[out.length - 1];
-    if (last && k === last[0] + last[1]) last[1]++;
-    else out.push([k, 1]);
-  }
-  return out;
-};
-const diffCache = new Map();
-function cellDiff(u, consumer, posture, filePath) {
-  const key = `${u.id}\u0000${consumer}\u0000${posture}\u0000${filePath}`;
-  if (diffCache.has(key)) return diffCache.get(key);
-  const mx = u.matrix;
-  const otherP = otherPosture(mx, posture);
-  const thisF = mx.cells[`${consumer}|${posture}`].files.find((f) => f.path === filePath);
-  const otherCell = mx.cells[`${consumer}|${otherP}`];
-  const otherF = otherCell ? otherCell.files.find((f) => f.path === filePath) : null;
-  const la = thisF ? thisF.content.split("\n") : [];
-  const lb = otherF ? otherF.content.split("\n") : [];
-  const d = lineDiff(la, lb);
-  const res = { ex: toRanges(d.exA), ghosts: d.ghostsForA, capped: !!d.capped };
-  diffCache.set(key, res);
-  return res;
-}
+// Posture line-diffs (f.diff) and only-in-other-posture files (f.onlyOther) are
+// precomputed in the model (ADR 0013 phase 3); the page only colors them.
+const EMPTY_DIFF = { ex: [], ghosts: [] };
 
 // ── unit sidebar ──
 function hasDrift(u) {
@@ -711,15 +657,8 @@ function wireMatrixBar(u) {
 
 // ── unit rendering ──
 function currentFiles(u) {
-  if (u.matrix && cur.consumer !== "source") {
-    // Union with the other posture so a file that exists only there still
-    // renders (empty, all-ghost) instead of silently disappearing.
-    const files = u.matrix.cells[`${cur.consumer}|${cur.posture}`].files;
-    const other = u.matrix.cells[`${cur.consumer}|${otherPosture(u.matrix, cur.posture)}`];
-    const have = new Set(files.map((f) => f.path));
-    const extra = other ? other.files.filter((f) => !have.has(f.path)).map((f) => ({ path: f.path, content: "", onlyOther: true })) : [];
-    return files.concat(extra).sort((a, b) => a.path.localeCompare(b.path));
-  }
+  // Cell files already carry f.diff and any f.onlyOther entries from the model.
+  if (u.matrix && cur.consumer !== "source") return u.matrix.cells[`${cur.consumer}|${cur.posture}`].files;
   const v = u.matrix ? u.variants[0] : u.variants.find((x) => x.key === cur.variant) || u.variants[0];
   return v.files;
 }
@@ -765,7 +704,7 @@ function renderUnitBody(u) {
 
   const decorate = inCell
     ? (f) => {
-        const { ex, ghosts } = cellDiff(u, cur.consumer, cur.posture, f.path);
+        const { ex, ghosts } = f.diff || EMPTY_DIFF;
         const plus = ex.reduce((n, r) => n + r[1], 0);
         const minus = ghosts.reduce((n, g) => n + g.lines.length, 0);
         if (!plus && !minus) return "";
@@ -778,7 +717,7 @@ function renderUnitBody(u) {
     ? files.map((f) => {
         let ann = null, chips = "";
         if (inCell) {
-          const { ex, ghosts, capped } = cellDiff(u, cur.consumer, cur.posture, f.path);
+          const { ex, ghosts, capped } = f.diff || EMPTY_DIFF;
           const exSet = new Set();
           for (const [start, len] of ex) for (let k = 0; k < len; k++) exSet.add(start + k);
           ann = { mode: "cell", posture: cur.posture, otherP: otherPosture(u.matrix, cur.posture), exSet, ghosts, ghostsOn: cur.ghosts };

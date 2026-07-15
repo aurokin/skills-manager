@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { runApply } from "../src/apply";
 import { loadContext } from "../src/context";
-import { buildReviewModel } from "../src/review/model";
+import { buildReviewModel, diffCellFiles } from "../src/review/model";
 import type { VerbOptions } from "../src/types";
 import { stringify } from "yaml";
 import { type Sandbox, makeAgentDef, makeComposed, makeRoot, makeSandbox, makeSkill, writeMachineConfig } from "./util";
@@ -128,6 +128,68 @@ describe("review model", () => {
     expect(cell?.files.some((f) => f.path === "references/codex.md")).toBe(true);
     // Deployed chip present for the applied consumer placements.
     expect(composed?.matrix?.consumers[0]?.deployed?.status).toBe("clean");
+  });
+
+  test("composed matrix cells carry posture line-diffs between the two postures", async () => {
+    const root = makeRoot(sb, "public");
+    // Posture blocks make SKILL.md differ between sandboxed and yolo; the
+    // reference body is posture-independent, so it must diff to nothing.
+    makeComposed(root.path, "orchestrate", {
+      skillYaml: {
+        posture: "yolo",
+        consumers: {
+          "claude-code": { description: "Delegate to codex." },
+          codex: { description: "Delegate to claude." },
+        },
+        dimensions: [
+          { key: "judgment", candidates: [{ provider: "claude", model: "m1" }, { provider: "codex", model: "m1" }] },
+        ],
+      },
+      template:
+        "# Orchestrate {{consumer}}\n\n" +
+        "<!-- @posture yolo -->\nYOLO paragraph\n<!-- @end -->\n" +
+        "<!-- @posture sandboxed -->\nSANDBOXED paragraph\n<!-- @end -->\n\n{{routing_table}}\n",
+      providers: {
+        claude: providerText("claude", "claude"),
+        codex: providerText("codex", "codex"),
+      },
+    });
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code", "codex"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const composed = model.units.find((u) => u.name === "orchestrate");
+    const yoloCell = composed?.matrix?.cells["claude-code|yolo"];
+
+    const skillMd = yoloCell?.files.find((f) => f.path === "SKILL.md");
+    expect(skillMd?.diff).toBeDefined();
+    // The yolo-only line is exclusive to A; the sandboxed-only line is a ghost.
+    expect((skillMd?.diff?.ex.length ?? 0) > 0 || (skillMd?.diff?.ghosts.length ?? 0) > 0).toBe(true);
+
+    // A file identical across postures diffs to nothing (no chip, no badge).
+    const ref = yoloCell?.files.find((f) => f.path === "references/codex.md");
+    expect(ref?.diff?.ex).toEqual([]);
+    expect(ref?.diff?.ghosts).toEqual([]);
+  });
+
+  test("diffCellFiles surfaces a file present only in the other posture as onlyOther", () => {
+    // The renderer never produces differing file sets across postures, so the
+    // union logic is exercised directly with fabricated trees.
+    const files = diffCellFiles(
+      { "SKILL.md": "a\nb\n" },
+      { "SKILL.md": "a\nb\n", "references/x.md": "x1\nx2\n" },
+    );
+    const only = files.find((f) => f.path === "references/x.md");
+    expect(only?.onlyOther).toBe(true);
+    expect(only?.content).toBe("");
+    // Its diff is all-ghost (everything comes from the other posture).
+    expect(only?.diff?.ex).toEqual([]);
+    expect((only?.diff?.ghosts.length ?? 0)).toBeGreaterThan(0);
+    // The shared, identical file carries an empty diff and no onlyOther flag.
+    const shared = files.find((f) => f.path === "SKILL.md");
+    expect(shared?.onlyOther).toBeUndefined();
+    expect(shared?.diff?.ex).toEqual([]);
+    expect(shared?.diff?.ghosts).toEqual([]);
   });
 
   test("drift join reports modified placements instead of clean", async () => {

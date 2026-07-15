@@ -8,13 +8,27 @@ import { loadCatalogSpecs } from "../catalog-specs";
 import type { SkmContext } from "../context";
 import { type SkmEnv, expandTilde } from "../env";
 import { computeDesiredPlacements, type DesiredPlacement } from "../placements";
-import { renderComposedSkill } from "../composed/render";
+import { renderComposedSkill, type RenderedComposedTree } from "../composed/render";
+import { lineDiff } from "./linediff";
 import { computeDrift } from "../status";
 import type { DriftClass, Posture } from "../types";
+
+/** Posture line-diff of a matrix cell file against the same path in the same
+ *  consumer's OTHER posture cell (composed units only). `capped` is present only
+ *  when the LCS fallback ran. */
+export interface ReviewFileDiff {
+  ex: [number, number][];
+  ghosts: { after: number; lines: string[] }[];
+  capped?: boolean;
+}
 
 export interface ReviewFile {
   path: string;
   content: string;
+  /** Present on composed matrix cell files: line-diff vs the other posture. */
+  diff?: ReviewFileDiff;
+  /** File exists only in the other posture: empty here, diff is all-ghost. */
+  onlyOther?: boolean;
 }
 
 export interface ReviewVariant {
@@ -73,6 +87,7 @@ export interface ReviewInvDir {
 }
 
 export interface ReviewModel {
+  // Version stays 1: phase-3 diff/onlyOther annotations on cell files are additive.
   reviewModelVersion: 1;
   built: string;
   machine: string;
@@ -148,6 +163,23 @@ function listTree(root: string): ReviewFile[] {
     return w(a.path) - w(b.path) || a.path.localeCompare(b.path);
   });
   return out;
+}
+
+/** Diff one posture's rendered tree against the same consumer's other posture:
+ *  every file carries its line-diff vs the same path in `other`; a path present
+ *  only in `other` is surfaced empty with an all-ghost diff so a file that exists
+ *  in just one posture still renders instead of silently vanishing. */
+export function diffCellFiles(thisTree: RenderedComposedTree, otherTree: RenderedComposedTree): ReviewFile[] {
+  const files: ReviewFile[] = [];
+  for (const p of new Set([...Object.keys(thisTree), ...Object.keys(otherTree)])) {
+    const here = thisTree[p];
+    const there = otherTree[p];
+    const d = lineDiff(here !== undefined ? here.split("\n") : [], there !== undefined ? there.split("\n") : []);
+    const diff: ReviewFileDiff = d.capped ? { ex: d.ex, ghosts: d.ghosts, capped: true } : { ex: d.ex, ghosts: d.ghosts };
+    files.push(here !== undefined ? { path: p, content: here, diff } : { path: p, content: "", onlyOther: true, diff });
+  }
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  return files;
 }
 
 function tilde(env: SkmEnv, p: string): string {
@@ -284,13 +316,14 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
     const postures: Posture[] = ["sandboxed", "yolo"];
     const cells: Record<string, ReviewMatrixCell> = {};
     for (const consumer of consumers) {
+      // Both postures compiled up front so each cell can diff against its sibling.
+      const trees: Record<Posture, RenderedComposedTree> = {
+        sandboxed: renderComposedSkill({ ...skill, posture: "sandboxed" }, consumer, registry),
+        yolo: renderComposedSkill({ ...skill, posture: "yolo" }, consumer, registry),
+      };
       for (const posture of postures) {
-        const rendered = renderComposedSkill({ ...skill, posture }, consumer, registry);
-        cells[`${consumer}|${posture}`] = {
-          files: Object.entries(rendered)
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([p, content]) => ({ path: p, content })),
-        };
+        const other: Posture = posture === "sandboxed" ? "yolo" : "sandboxed";
+        cells[`${consumer}|${posture}`] = { files: diffCellFiles(trees[posture], trees[other]) };
       }
     }
     const skillDps = composedPlacements.get(skill.name) ?? [];
