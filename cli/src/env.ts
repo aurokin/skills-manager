@@ -133,6 +133,11 @@ export function storeDir(env: SkmEnv): string {
   return path.join(stateHome(env), "skills-manager", "store");
 }
 
+/** The `skills` CLI's install ledger: <home>/.agents/.skill-lock.json (read-only for skm). */
+export function skillLockPath(env: SkmEnv): string {
+  return path.join(env.home, ".agents", ".skill-lock.json");
+}
+
 /** $COPILOT_HOME (expanded) or <home>/.copilot — mirrors the oracle's _resolve_copilot_home. */
 export function resolveCopilotHome(env: SkmEnv): string {
   return env.copilotHome ? expandTilde(env, env.copilotHome) : path.join(env.home, ".copilot");
