@@ -92,6 +92,18 @@ describe("review HTML render", () => {
     const outcome = await runReview(sb.env, { ...PLAIN_OPTS, out: target });
     expect(outcome.exitCode).toBe(1);
     expect(fs.existsSync(path.join(wt, "review.html"))).toBe(false);
+
+    // A chain deeper than the resolver follows is refused outright — guarding
+    // one path and writing through another is never acceptable.
+    const chainDir = path.join(sb.base, "chain");
+    fs.mkdirSync(chainDir, { recursive: true });
+    fs.symlinkSync(path.join(wt, "review.html"), path.join(chainDir, "link0"));
+    for (let i = 1; i <= 45; i++) {
+      fs.symlinkSync(path.join(chainDir, `link${i - 1}`), path.join(chainDir, `link${i}`));
+    }
+    const deep = await runReview(sb.env, { ...PLAIN_OPTS, out: path.join(chainDir, "link45") });
+    expect(deep.exitCode).toBe(1);
+    expect(fs.existsSync(path.join(wt, "review.html"))).toBe(false);
   });
 
   test("docs budget drops the largest doc with a marker, leaving the total under budget", () => {

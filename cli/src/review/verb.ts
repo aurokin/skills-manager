@@ -12,25 +12,29 @@ import { buildReviewModel } from "./model";
 import { renderReviewHtml } from "./render";
 
 /** Follow destination symlinks (even dangling) and realpath the parent, so the
- *  privacy guard and the write both see where the bytes actually land. */
-function resolveDestination(p: string): string {
+ *  privacy guard and the write both see where the bytes actually land.
+ *  Returns undefined when the chain cannot be fully resolved — writing there
+ *  would mean guarding one path and landing on another. */
+function resolveDestination(p: string): string | undefined {
   let cur = p;
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < 40; i++) {
     let st: fs.Stats;
     try {
       st = fs.lstatSync(cur);
     } catch {
-      break;
+      st = undefined as unknown as fs.Stats;
     }
-    if (!st.isSymbolicLink()) break;
+    if (!st || !st.isSymbolicLink()) {
+      try {
+        return path.join(fs.realpathSync(path.dirname(cur)), path.basename(cur));
+      } catch {
+        // Parent does not exist yet (fresh state dir): created before the write.
+        return cur;
+      }
+    }
     cur = path.resolve(path.dirname(cur), fs.readlinkSync(cur));
   }
-  try {
-    cur = path.join(fs.realpathSync(path.dirname(cur)), path.basename(cur));
-  } catch {
-    // Parent does not exist yet (fresh state dir): created before the write.
-  }
-  return cur;
+  return undefined;
 }
 
 export async function runReview(env: SkmEnv, opts: VerbOptions): Promise<VerbOutcome> {
@@ -45,11 +49,17 @@ export async function runReview(env: SkmEnv, opts: VerbOptions): Promise<VerbOut
   // worktree. Guard (and write) the REAL destination: writeFileSync follows a
   // destination symlink — including a dangling one — so an allowed-looking
   // target must not smuggle the page elsewhere.
-  const outPath = resolveDestination(
-    opts.out
-      ? path.resolve(expandTilde(env, opts.out))
-      : path.join(stateHome(env), "skills-manager", "review.html"),
-  );
+  const requested = opts.out
+    ? path.resolve(expandTilde(env, opts.out))
+    : path.join(stateHome(env), "skills-manager", "review.html");
+  const outPath = resolveDestination(requested);
+  if (!outPath) {
+    return {
+      exitCode: 1,
+      json: { error: `refusing to write review page: unresolvable symlink chain at ${requested}` },
+      human: `skm review: refusing to write '${requested}': unresolvable symlink chain`,
+    };
+  }
   const reason = privacyViolation(ctx.config, outPath);
   if (reason) {
     return {

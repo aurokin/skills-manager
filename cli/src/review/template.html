@@ -562,15 +562,18 @@ function watchSections() {
     must not teleport the reader — same file, same relative offset). */
 function rerenderPinned(render) {
   const content = $("#content");
+  // Section offset measured within the scroller (offsetTop is relative to the
+  // offsetParent, which is NOT #content — rects share one coordinate space).
+  const secTop = (el) => el.getBoundingClientRect().top - content.getBoundingClientRect().top + content.scrollTop;
   const activeId = document.querySelector(".ft-file.active")?.dataset.target;
   const sec = activeId ? document.getElementById(activeId) : null;
-  const delta = sec ? content.scrollTop - sec.offsetTop : content.scrollTop;
+  const delta = sec ? content.scrollTop - secTop(sec) : content.scrollTop;
   render();
   const prev = content.style.scrollBehavior;
   content.style.scrollBehavior = "auto";
   const s2 = activeId ? document.getElementById(activeId) : null;
   if (s2) {
-    content.scrollTop = s2.offsetTop + Math.max(0, Math.min(delta, Math.max(0, s2.offsetHeight - 40)));
+    content.scrollTop = secTop(s2) + Math.max(0, Math.min(delta, Math.max(0, s2.offsetHeight - 40)));
     setActive(activeId);
   } else {
     content.scrollTop = Math.min(delta, content.scrollHeight);
