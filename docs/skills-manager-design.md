@@ -294,8 +294,9 @@ skm explain  <skill> [--json]      # source root, scoping, placements, visibilit
 skm root     add|list|remove <path>
 ```
 
-Project-family deploys are **not** a skm verb yet: they remain the bash
-`deploy-project-skills.sh` path until migration phase 6 completes (§10).
+Project-family deploys are now the `skm deploy` verb (ADR 0014 decision 3);
+the bash `deploy-project-skills.sh` path was retired at the ADR 0014 final
+commit (§10, phase 6).
 
 Conventions (ADR 0006): `plan` never mutates; `apply --plan` executes
 exactly the reviewed plan; exit codes 0/1/2; `--json` on every verb;
@@ -321,11 +322,13 @@ knows how to operate the system.
 
 ## 10. Migration and sequencing
 
-Each phase lands as an independent PR with tests; bash behavior
-(`maintenance/test-*.sh`) is the contract until parity. Status markers below
-reflect what has shipped; [cli/README.md](../cli/README.md)'s "Relationship to
-the bash scripts" section is the authoritative current-status note. (ADR 0014,
-separate work, re-scopes phases 6/7.)
+Each phase lands as an independent PR with tests; bash behavior was the
+contract until parity, captured now as golden fixtures
+(`cli/test/fixtures/parity-goldens/`) since the sync/deploy scripts were
+retired (ADR 0014). Status markers below reflect what has shipped;
+[cli/README.md](../cli/README.md)'s "Relationship to the bash scripts" section
+is the authoritative current-status note. (ADR 0014, separate work, re-scoped
+phases 6/7.)
 
 1. **Registry + read-only core** *(done)* — `registry/agents.json` generated from §4
    with citations; TypeScript `plan`/`status` running against the *current*
@@ -341,13 +344,16 @@ separate work, re-scopes phases 6/7.)
    pointing back at this engine.
 5. **Rendering (first-party polish)** *(done)* — `agents/*.yaml` overrides, rendered
    placements, `modified` detection.
-6. **Retire bash** *(partial; re-scoped by
-   [ADR 0014](adr/0014-upstream-sync-absorption.md))* — port
-   `deploy-project-skills.sh` families; script deletion is deferred to
-   ADR 0014's phase-4 parity gate (post-cutover soak, deletion as its own
-   commit), then bash tests convert to golden `plan --json` tests.
-   Local-skill placement and drift are ported; project families still run
-   on bash.
+6. **Retire bash** *(done; re-scoped by
+   [ADR 0014](adr/0014-upstream-sync-absorption.md))* — `deploy-project-skills.sh`
+   families ported to `skm deploy` (ADR 0014 decision 3) and unscoped upstream
+   sync ported to `skm upstream sync` (decision 4). At the ADR 0014 final
+   commit (the "retire bash" deletion commit/PR), `install-repro-skills.sh`,
+   `deploy-project-skills.sh`, and `lib/*.sh` were deleted and the live-bash
+   parity suites converted to golden-backed tests
+   (`cli/test/fixtures/parity-goldens/`). Local-skill placement and drift were
+   ported earlier. Only the `agents-md` fork sync (`maintenance/sync-agents-md.sh`)
+   remains on bash, deliberately out of ADR 0014 scope.
 7. **Scoped upstream vendoring** *(deferred; re-scoped by
    [ADR 0014](adr/0014-upstream-sync-absorption.md) — unscoped sync absorbed
    as `skm upstream sync`, true vendoring still deferred)* — the store/pinning

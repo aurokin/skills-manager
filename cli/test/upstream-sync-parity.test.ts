@@ -1,22 +1,24 @@
-// Parity assertion for the `skm upstream sync` cutover (ADR 0014 implementation-plan
-// item 4): the TS verb and the original install-repro-skills.sh run against IDENTICAL
-// fixtures — same catalog/global-specs.txt, same `.skills.local.json` overrides, same
-// installed-set JSON, same fixture home trees — and must produce the same `skills` CLI
-// argv AND the same resulting filesystem state. The assertions target the DESTRUCTIVE
-// EDGES the ADR enumerates, not just converged sets:
+// Golden-backed parity for the `skm upstream sync` cutover (ADR 0014 implementation-plan
+// item 4). The bash script install-repro-skills.sh was deleted at the ADR 0014 final
+// commit; its `skills` CLI argv stream and resulting filesystem state were captured one
+// final time into test/fixtures/parity-goldens/sync.json (see that dir's README). These
+// tests assert the TS verb reproduces those goldens for IDENTICAL fixtures — same
+// catalog/global-specs.txt, `.skills.local.json` overrides, installed-set JSON, and fixture
+// home tree. The assertions target the DESTRUCTIVE EDGES the ADR enumerates, not just
+// converged sets:
 //   (i)  Hermes add-only: stale removal narrowed with `-a` to non-Hermes agents
 //        (and skipped entirely in Hermes-only mode); the ~/.hermes/skills sweep
 //        removes ONLY our own dangling symlinks — real dirs, live links, and
-//        foreign-target danglers survive byte-identically on both sides.
+//        foreign-target danglers survive byte-identically.
 //   (ii) the OpenClaw --dangerously-accept-openclaw-risks add flag,
 //   (iii) diffwarden --full-depth,
 //   (iv) preserveGlobalSkillNames protecting an installed stale name,
 //   (v)  excludeGlobalSpecs: an excluded skill is not added AND is removed when
 //        installed (exclusion is not preservation).
 //
-// No network / no real `skills` CLI: `git` is a shim that materializes a fixture
-// SKILL.md layout, `skills` is a shim that records argv (and serves the installed
-// list for `list -g --json`).
+// The TS side needs no bash script and no network: `git` is a shim that materializes a
+// fixture SKILL.md layout, `skills` is a shim that records argv (and serves the installed
+// list for `list -g --json`). Both shims are bash+jq, so the suite gates on those.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -25,8 +27,8 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { repoRootDir } from "./util";
 
-// Upstream enumeration table shared by the git shim (both runners resolve whole-repo
-// specs and coverage audits through it).
+// Upstream enumeration table shared by the git shim (the TS verb resolves whole-repo
+// specs and coverage audits through it — matches the table the goldens were captured with).
 const UPSTREAM: Record<string, string[]> = {
   "keep/repo": ["keep-b"],
   "miss/repo": ["missing-c"],
@@ -57,11 +59,19 @@ const COVERAGE = {
   ],
 };
 
-const SYNC_SCRIPT = path.join(repoRootDir(), "install-repro-skills.sh");
+interface SyncGolden {
+  agents: string;
+  argv: string[][];
+  snapshot: string[];
+}
+const GOLDEN: Record<string, SyncGolden> = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dir, "fixtures", "parity-goldens", "sync.json"), "utf8"),
+);
+
+// The TS verb shells to shimmed `git` / `skills` (bash+jq scripts); gate on those.
 const hasBash = spawnSync("bash", ["-c", "true"]).status === 0;
 const hasJq = spawnSync("bash", ["-c", "command -v jq"]).status === 0;
-const hasScript = fs.existsSync(SYNC_SCRIPT);
-const enabled = hasBash && hasJq && hasScript;
+const enabled = hasBash && hasJq;
 
 let base: string;
 let fixtureRoot: string;
@@ -189,7 +199,7 @@ function snapshotHome(home: string): string[] {
   return lines;
 }
 
-// ── runners ──────────────────────────────────────────────────────────────────
+// ── runner ───────────────────────────────────────────────────────────────────
 
 interface RunResult {
   argv: string[][];
@@ -203,28 +213,6 @@ function readArgvLog(log: string): string[][] {
     .split("\n")
     .filter((l) => l.length > 0)
     .map((l) => l.split("\x1f").filter((f) => f.length > 0));
-}
-
-function runBash(tag: string, skillsAgents: string): RunResult {
-  const home = buildHome(`bash-${tag}`);
-  const log = path.join(base, `skills-bash-${tag}.log`);
-  execFileSync("bash", [SYNC_SCRIPT], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: `${shimDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      HOME: home,
-      SKILLS_AGENTS: skillsAgents,
-      SKILLS_BIN: "skills",
-      SKILL_CATALOG_DIR: path.join(fixtureRoot, "catalog"),
-      LOCAL_SKILLS_CONFIG_FILE: path.join(fixtureRoot, ".skills.local.json"),
-      UPSTREAM_COVERAGE_FILE: path.join(fixtureRoot, "upstream-coverage.json"),
-      PARITY_UPSTREAM_JSON: upstreamJson,
-      PARITY_SKILLS_LOG: log,
-      PARITY_INSTALLED_JSON: writeInstalledJson(`bash-${tag}`, home),
-    },
-  });
-  return { argv: readArgvLog(log), snapshot: snapshotHome(home) };
 }
 
 function runTs(tag: string, skillsAgents: string): RunResult {
@@ -284,7 +272,7 @@ interface ArgvGroups {
   adds: string[][];
 }
 
-/** Group recorded argv by subcommand, asserting the bash phase order
+/** Group recorded argv by subcommand, asserting the phase order
  *  (list → removes → update → adds) held in the raw sequence. */
 function groupArgv(argv: string[][]): ArgvGroups {
   const groups: ArgvGroups = { list: [], removes: [], update: [], adds: [] };
@@ -304,28 +292,29 @@ function groupArgv(argv: string[][]): ArgvGroups {
   return groups;
 }
 
-/** Removal order is a bash hash-iteration artifact: compare removals as sorted sets. */
+/** Removal order is a hash-iteration artifact: compare removals as sorted sets. */
 function sortedLines(lines: string[][]): string[] {
   return lines.map((l) => l.join(" ")).sort();
 }
 
-function assertParity(bash: RunResult, ts: RunResult): { groups: ArgvGroups } {
-  const bashGroups = groupArgv(bash.argv);
+/** Assert the TS run reproduces the recorded bash golden (argv groups + fs snapshot). */
+function assertParity(golden: SyncGolden, ts: RunResult): { groups: ArgvGroups } {
+  const goldenGroups = groupArgv(golden.argv);
   const tsGroups = groupArgv(ts.argv);
-  expect(tsGroups.list).toEqual(bashGroups.list);
-  expect(sortedLines(tsGroups.removes)).toEqual(sortedLines(bashGroups.removes));
-  expect(tsGroups.update).toEqual(bashGroups.update);
-  expect(tsGroups.adds).toEqual(bashGroups.adds); // exact order: desired-spec order
-  expect(ts.snapshot).toEqual(bash.snapshot);
+  expect(tsGroups.list).toEqual(goldenGroups.list);
+  expect(sortedLines(tsGroups.removes)).toEqual(sortedLines(goldenGroups.removes));
+  expect(tsGroups.update).toEqual(goldenGroups.update);
+  expect(tsGroups.adds).toEqual(goldenGroups.adds); // exact order: desired-spec order
+  expect(ts.snapshot).toEqual(golden.snapshot);
   return { groups: tsGroups };
 }
 
 // ── scenarios ────────────────────────────────────────────────────────────────
 
-describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destructive-edge parity", () => {
+describe.skipIf(!enabled)("skm upstream sync destructive-edge parity (golden: install-repro-skills.sh)", () => {
   test("standard agents (no hermes): stale+excluded removed, preserves honored, extra add flags", () => {
-    const agents = "codex claude-code";
-    const { groups } = assertParity(runBash("std", agents), runTs("std", agents));
+    const golden = GOLDEN.std!;
+    const { groups } = assertParity(golden, runTs("std", golden.agents));
 
     // (iv) preserveGlobalSkillNames: installed 'handmade' is stale but never removed.
     // (v) excludeGlobalSpecs: installed 'w2' IS removed (exclusion is not preservation);
@@ -345,10 +334,9 @@ describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destruc
   });
 
   test("with hermes: removals narrowed to non-hermes agents; hermes sweep only touches ours", () => {
-    const agents = "codex claude-code hermes-agent";
-    const bash = runBash("hermes", agents);
-    const ts = runTs("hermes", agents);
-    const { groups } = assertParity(bash, ts);
+    const golden = GOLDEN.hermes!;
+    const ts = runTs("hermes", golden.agents);
+    const { groups } = assertParity(golden, ts);
 
     // (i) stale removal narrowed with -a to NON-hermes agents…
     for (const r of groups.removes) {
@@ -359,8 +347,7 @@ describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destruc
     for (const a of groups.adds) expect(a).toContain("hermes-agent");
 
     // (i) the hermes sweep: OUR danglers gone, foreign dangler + live link + real dir
-    // survive — identically on both sides (assertParity already diffed snapshots;
-    // these assert the absolute edge, not just convergence).
+    // survive (assertParity already diffed snapshots; these assert the absolute edge).
     const hermes = ts.snapshot.filter((l) => l.startsWith(path.join(".hermes", "skills")));
     const names = hermes.map((l) => l.split(" ")[0]);
     expect(names).not.toContain(path.join(".hermes", "skills", "ours-dangling-abs"));
@@ -371,10 +358,8 @@ describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destruc
   });
 
   test("hermes-only mode: stale removal skipped entirely; adds still run", () => {
-    const agents = "hermes-agent";
-    const bash = runBash("hermes-only", agents);
-    const ts = runTs("hermes-only", agents);
-    const { groups } = assertParity(bash, ts);
+    const golden = GOLDEN["hermes-only"]!;
+    const { groups } = assertParity(golden, runTs("hermes-only", golden.agents));
 
     // (i) NEVER deletes when only hermes is enabled: zero `skills remove` calls.
     expect(groups.removes).toEqual([]);
@@ -385,11 +370,10 @@ describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destruc
   });
 
   test("no hermes in agents: the hermes dir is never touched at all", () => {
-    const agents = "codex";
-    const bash = runBash("no-hermes", agents);
-    const ts = runTs("no-hermes", agents);
-    assertParity(bash, ts);
-    // All five fixture entries survive on both sides.
+    const golden = GOLDEN["no-hermes"]!;
+    const ts = runTs("no-hermes", golden.agents);
+    assertParity(golden, ts);
+    // All fixture entries survive on both sides.
     const prefix = `${path.join(".hermes", "skills")}${path.sep}`;
     const hermesEntries = ts.snapshot.filter((l) => l.startsWith(prefix)).length;
     expect(hermesEntries).toBe(6); // 4 links + real-dir + its SKILL.md
@@ -399,7 +383,7 @@ describe.skipIf(!enabled)("skm upstream sync ↔ install-repro-skills.sh destruc
 // Guard-rail: a skipped parity suite must be visible, never green-by-omission.
 test("sync parity toolchain availability (informational)", () => {
   if (!enabled) {
-    console.warn(`upstream-sync parity suite skipped: bash=${hasBash} jq=${hasJq} script=${hasScript}`);
+    console.warn(`upstream-sync parity suite skipped: bash=${hasBash} jq=${hasJq}`);
   }
   expect(true).toBe(true);
 });

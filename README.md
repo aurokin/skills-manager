@@ -14,10 +14,10 @@ OpenCode) and optionally exported as a derived skill or a `tprompt` prompt.
 These were absorbed from the retired `custom_agents` repo at cutover; running
 its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 
-> **In progress:** a TypeScript CLI (`skm`, under [`cli/`](cli/)) is replacing
-> the bash engine, adding agent-scoped skills, private overlay repos,
-> composed skills (one source rendered per consumer — routing tables,
-> self-exclusion, compile-time posture;
+> **Engine:** a TypeScript CLI (`skm`, under [`cli/`](cli/)) runs the whole
+> surface, adding agent-scoped skills, private overlay repos, composed skills
+> (one source rendered per consumer — routing tables, self-exclusion,
+> compile-time posture;
 > [ADR 0010](docs/adr/0010-composed-skills-artifact-type.md)), gated
 > (user-invoked-only) skills (`disable-model-invocation: true` translated to
 > each agent's gate — frontmatter or a codex companion file — placed only into
@@ -26,22 +26,24 @@ its `shared-agents` tool after cutover is forbidden (see AGENTS.md).
 > Terraform-style plan/apply with an ownership state file. Design:
 > [docs/skills-manager-design.md](docs/skills-manager-design.md) · decisions:
 > [docs/adr/](docs/adr/) · usage: [cli/README.md](cli/README.md). The bash
-> scripts below remain authoritative for upstream-skill sync until the
-> migration completes.
+> sync/deploy scripts were retired at the ADR 0014 final commit: `skm upstream
+> sync` and `skm deploy` replace them (`skm` still shells to the external
+> `skills` CLI as the fetch/place engine).
 
 It also supports an optional gitignored personal overlay file for extra global
 skills, per-family additions, and custom project families.
 
 ## Requirements
 
-- `skills` CLI
-- `jq`
+- `bun` (runs the `skm` CLI under `cli/`)
+- `skills` CLI (skm shells to it as the fetch/place engine)
 - `git`
 - `curl` for the `agents-md` sync maintenance script
+- `jq` is only needed to run the golden-backed parity suites' `git` shim (dev/test), not at runtime
 
-## Scripts
+## Commands
 
-### `./install-repro-skills.sh`
+### `skm upstream sync`
 
 Normalizes your global skill setup under `~/.agents/skills` and `~/.claude/skills`.
 
@@ -71,15 +73,15 @@ for that repo.
 Examples:
 
 ```bash
-./install-repro-skills.sh
-SKILLS_AGENTS="codex opencode" ./install-repro-skills.sh
-SKILLS_AUDIT_REPO_COVERAGE=0 ./install-repro-skills.sh
+cd cli && bun src/cli.ts upstream sync
+cd cli && SKILLS_AGENTS="codex opencode" bun src/cli.ts upstream sync
+cd cli && SKILLS_AUDIT_REPO_COVERAGE=0 bun src/cli.ts upstream sync
 ```
 
 ### Agent targets
 
-`SKILLS_AGENTS` is a single space-separated override. When unset, scripts use
-the standard set defined in `lib/agents.sh`:
+`SKILLS_AGENTS` is a single space-separated override. When unset, `skm` uses
+the standard set:
 
 - `codex`
 - `opencode`
@@ -95,8 +97,8 @@ additional agents like Hermes (see below).
 `hermes-agent` is supported as an opt-in target. Include it in `SKILLS_AGENTS`:
 
 ```bash
-SKILLS_AGENTS="codex opencode gemini-cli github-copilot claude-code hermes-agent" \
-    ./install-repro-skills.sh
+cd cli && SKILLS_AGENTS="codex opencode gemini-cli github-copilot claude-code hermes-agent" \
+    bun src/cli.ts upstream sync
 ```
 
 Hermes behavior is intentionally different:
@@ -113,9 +115,9 @@ Hermes behavior is intentionally different:
   `~/.hermes/skills/<name>` symlink whose target resolves into `skills/` or
   `~/.agents/skills/` is removed. Real directories and symlinks pointing
   elsewhere are left untouched.
-- Without `hermes-agent` in `SKILLS_AGENTS`, scripts never read or write
-  `~/.hermes/skills`. To clean up past Hermes writes after opting out, opt
-  back in for one run.
+- Without `hermes-agent` in `SKILLS_AGENTS`, `skm upstream sync` never reads or
+  writes `~/.hermes/skills`. To clean up past Hermes writes after opting out,
+  opt back in for one run.
 - Running with `SKILLS_AGENTS="hermes-agent"` alone is supported but is an
   edge case: the CLI installs as real directories under `~/.hermes/skills`,
   which look like Hermes-owned content on disk and won't be cleaned up by
@@ -126,7 +128,7 @@ Hermes behavior is intentionally different:
   collisions with externally-configured skill roots
   (`skills.external_dirs` in `~/.hermes/config.yaml`).
 
-### `./deploy-project-skills.sh`
+### `skm deploy`
 
 Deploys curated skill families into a target directory with project-scoped `skills add --copy` installs.
 
@@ -156,17 +158,12 @@ marker are documented in [docs/exclude-overrides.md](docs/exclude-overrides.md).
 The `^` marker means the final resolved set covers all current upstream skills
 for that repo.
 
-Interactive mode:
+The bash interactive prompt mode is dropped (`skm` is agent-first);
+`--list-families` plus flags cover the human path:
 
 ```bash
-./deploy-project-skills.sh --interactive
-```
-
-Non-interactive mode:
-
-```bash
-./deploy-project-skills.sh \
-  --target ~/code/my-app \
+cd cli && bun src/cli.ts deploy \
+  ~/code/my-app \
   --family expo \
   --family convex \
   --agents "codex claude-code" \
@@ -176,7 +173,7 @@ Non-interactive mode:
 List available families:
 
 ```bash
-./deploy-project-skills.sh --list-families
+cd cli && bun src/cli.ts deploy ~/code/my-app --list-families
 ```
 
 ### Local-skill placement (`skm`)
@@ -210,10 +207,10 @@ bash maintenance/sync-agents-md.sh
 The source of truth is split by purpose:
 
 - `catalog/global-specs.txt`
-  global skills managed by `install-repro-skills.sh`
+  global skills managed by `skm upstream sync`
 - `upstream-coverage.json`
   global upstream repos audited for skill drift during
-  `install-repro-skills.sh` (when `SKILLS_AUDIT_REPO_COVERAGE=1`)
+  `skm upstream sync` (when `SKILLS_AUDIT_REPO_COVERAGE=1`)
 - `catalog/families.tsv`
   family names and descriptions for project deployment
 - `catalog/families/*.txt`
@@ -235,7 +232,7 @@ installs [`pbakaus/impeccable@impeccable`](https://impeccable.style/) instead of
 `anthropics/skills@frontend-design`. Impeccable v2.0 replaced the old skill with
 a single `/impeccable` namespace.
 
-After you run `./install-repro-skills.sh`:
+After you run `skm upstream sync`:
 
 - `frontend-design` is removed from `~/.agents/skills` and `~/.claude/skills`
   if it was installed by this workflow
@@ -258,8 +255,9 @@ changing the curated catalog. The file is gitignored; start from
 copying it does not opt you out of curated skills until you replace those
 values intentionally.
 
-This gitignored `.skills.local.json` is only a quick-tweak layer for the bash
-scripts' upstream/family sets — it is **not** the private overlay repo. Private
+This gitignored `.skills.local.json` is only a quick-tweak layer for the
+`skm upstream sync` / `skm deploy` upstream/family sets — it is **not** the
+private overlay repo. Private
 skills and agent definitions live in a separate registered overlay root (a real
 repo, resolved by `skm`); see
 [ADR 0001](docs/adr/0001-overlay-repo-architecture.md).
@@ -267,7 +265,7 @@ repo, resolved by `skm`); see
 Supported keys:
 
 - `globalSpecs`
-  additive upstream specs merged into `install-repro-skills.sh`
+  additive upstream specs merged into the `skm upstream sync` desired set
 - `excludeGlobalSpecs`
   upstream specs removed from the resolved global install set
 - `preserveGlobalSkillNames`
@@ -353,10 +351,15 @@ To add a new local skill:
 
 ## Tests
 
-Run the shell test scripts directly:
+The `skm` engine (including the `upstream sync` / `deploy` parity suites, now
+golden-backed against the retired scripts' captured output) runs under `bun`:
 
 ```bash
-bash maintenance/test-install-repro-skills.sh
-bash maintenance/test-deploy-project-skills.sh
+cd cli && bun test
+```
+
+The one remaining shell test covers the `agents-md` fork sync:
+
+```bash
 bash maintenance/test-agents-md.sh
 ```

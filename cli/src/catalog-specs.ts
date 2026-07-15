@@ -1,8 +1,8 @@
-// Read-only loader for the upstream-skill catalogs the bash sync engine owns
-// (ADR 0013). Attribution only: a parsed spec is DESIRED state — "matches
-// curated entry <owner>/<repo>" — never evidence of how a directory on disk
-// was actually installed. Sync stays with install-repro-skills.sh until the
-// phase-7 vendoring path exists.
+// Read-only loader for the upstream-skill catalogs (ADR 0013). Attribution
+// only: a parsed spec is DESIRED state — "matches curated entry
+// <owner>/<repo>" — never evidence of how a directory on disk was actually
+// installed. Upstream sync is owned by `skm upstream sync` (ADR 0014); scoped
+// upstream vendoring stays deferred to the phase-7 path.
 
 import * as fs from "node:fs";
 import * as path from "node:path";

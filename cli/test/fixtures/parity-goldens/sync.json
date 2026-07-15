@@ -1,0 +1,389 @@
+{
+  "std": {
+    "agents": "codex claude-code",
+    "argv": [
+      [
+        "list",
+        "-g",
+        "--json"
+      ],
+      [
+        "remove",
+        "-g",
+        "stale-a",
+        "-a",
+        "codex",
+        "claude-code",
+        "-y"
+      ],
+      [
+        "remove",
+        "-g",
+        "w2",
+        "-a",
+        "codex",
+        "claude-code",
+        "-y"
+      ],
+      [
+        "update"
+      ],
+      [
+        "add",
+        "miss/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "-s",
+        "missing-c",
+        "-y"
+      ],
+      [
+        "add",
+        "openclaw/openclaw",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "-s",
+        "github",
+        "-y",
+        "--dangerously-accept-openclaw-risks"
+      ],
+      [
+        "add",
+        "aurokin/diffwarden",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "-s",
+        "diffwarden",
+        "-y",
+        "--full-depth"
+      ],
+      [
+        "add",
+        "wide/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "-s",
+        "w1",
+        "w3",
+        "-y"
+      ],
+      [
+        "add",
+        "local/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "-s",
+        "local-extra",
+        "-y"
+      ]
+    ],
+    "snapshot": [
+      ".agents dir",
+      ".agents/skills dir",
+      ".agents/skills/alive dir",
+      ".claude dir",
+      ".claude/skills dir",
+      ".hermes dir",
+      ".hermes/skills dir",
+      ".hermes/skills/foreign-dangling link -> /nowhere/foreign-target",
+      ".hermes/skills/ours-dangling-abs link -> $HOME/.agents/skills/gone",
+      ".hermes/skills/ours-dangling-rel link -> ../../.agents/skills/gone2",
+      ".hermes/skills/ours-valid link -> $HOME/.agents/skills/alive",
+      ".hermes/skills/real-dir dir",
+      ".hermes/skills/real-dir/SKILL.md file"
+    ]
+  },
+  "hermes": {
+    "agents": "codex claude-code hermes-agent",
+    "argv": [
+      [
+        "list",
+        "-g",
+        "--json"
+      ],
+      [
+        "remove",
+        "-g",
+        "stale-a",
+        "-a",
+        "codex",
+        "claude-code",
+        "-y"
+      ],
+      [
+        "remove",
+        "-g",
+        "w2",
+        "-a",
+        "codex",
+        "claude-code",
+        "-y"
+      ],
+      [
+        "update"
+      ],
+      [
+        "add",
+        "miss/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "hermes-agent",
+        "-s",
+        "missing-c",
+        "-y"
+      ],
+      [
+        "add",
+        "openclaw/openclaw",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "hermes-agent",
+        "-s",
+        "github",
+        "-y",
+        "--dangerously-accept-openclaw-risks"
+      ],
+      [
+        "add",
+        "aurokin/diffwarden",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "hermes-agent",
+        "-s",
+        "diffwarden",
+        "-y",
+        "--full-depth"
+      ],
+      [
+        "add",
+        "wide/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "hermes-agent",
+        "-s",
+        "w1",
+        "w3",
+        "-y"
+      ],
+      [
+        "add",
+        "local/repo",
+        "-g",
+        "-a",
+        "codex",
+        "claude-code",
+        "hermes-agent",
+        "-s",
+        "local-extra",
+        "-y"
+      ]
+    ],
+    "snapshot": [
+      ".agents dir",
+      ".agents/skills dir",
+      ".agents/skills/alive dir",
+      ".claude dir",
+      ".claude/skills dir",
+      ".hermes dir",
+      ".hermes/skills dir",
+      ".hermes/skills/foreign-dangling link -> /nowhere/foreign-target",
+      ".hermes/skills/ours-valid link -> $HOME/.agents/skills/alive",
+      ".hermes/skills/real-dir dir",
+      ".hermes/skills/real-dir/SKILL.md file"
+    ]
+  },
+  "hermes-only": {
+    "agents": "hermes-agent",
+    "argv": [
+      [
+        "list",
+        "-g",
+        "--json"
+      ],
+      [
+        "update"
+      ],
+      [
+        "add",
+        "miss/repo",
+        "-g",
+        "-a",
+        "hermes-agent",
+        "-s",
+        "missing-c",
+        "-y"
+      ],
+      [
+        "add",
+        "openclaw/openclaw",
+        "-g",
+        "-a",
+        "hermes-agent",
+        "-s",
+        "github",
+        "-y",
+        "--dangerously-accept-openclaw-risks"
+      ],
+      [
+        "add",
+        "aurokin/diffwarden",
+        "-g",
+        "-a",
+        "hermes-agent",
+        "-s",
+        "diffwarden",
+        "-y",
+        "--full-depth"
+      ],
+      [
+        "add",
+        "wide/repo",
+        "-g",
+        "-a",
+        "hermes-agent",
+        "-s",
+        "w1",
+        "w3",
+        "-y"
+      ],
+      [
+        "add",
+        "local/repo",
+        "-g",
+        "-a",
+        "hermes-agent",
+        "-s",
+        "local-extra",
+        "-y"
+      ]
+    ],
+    "snapshot": [
+      ".agents dir",
+      ".agents/skills dir",
+      ".agents/skills/alive dir",
+      ".claude dir",
+      ".claude/skills dir",
+      ".hermes dir",
+      ".hermes/skills dir",
+      ".hermes/skills/foreign-dangling link -> /nowhere/foreign-target",
+      ".hermes/skills/ours-valid link -> $HOME/.agents/skills/alive",
+      ".hermes/skills/real-dir dir",
+      ".hermes/skills/real-dir/SKILL.md file"
+    ]
+  },
+  "no-hermes": {
+    "agents": "codex",
+    "argv": [
+      [
+        "list",
+        "-g",
+        "--json"
+      ],
+      [
+        "remove",
+        "-g",
+        "stale-a",
+        "-a",
+        "codex",
+        "-y"
+      ],
+      [
+        "remove",
+        "-g",
+        "w2",
+        "-a",
+        "codex",
+        "-y"
+      ],
+      [
+        "update"
+      ],
+      [
+        "add",
+        "miss/repo",
+        "-g",
+        "-a",
+        "codex",
+        "-s",
+        "missing-c",
+        "-y"
+      ],
+      [
+        "add",
+        "openclaw/openclaw",
+        "-g",
+        "-a",
+        "codex",
+        "-s",
+        "github",
+        "-y",
+        "--dangerously-accept-openclaw-risks"
+      ],
+      [
+        "add",
+        "aurokin/diffwarden",
+        "-g",
+        "-a",
+        "codex",
+        "-s",
+        "diffwarden",
+        "-y",
+        "--full-depth"
+      ],
+      [
+        "add",
+        "wide/repo",
+        "-g",
+        "-a",
+        "codex",
+        "-s",
+        "w1",
+        "w3",
+        "-y"
+      ],
+      [
+        "add",
+        "local/repo",
+        "-g",
+        "-a",
+        "codex",
+        "-s",
+        "local-extra",
+        "-y"
+      ]
+    ],
+    "snapshot": [
+      ".agents dir",
+      ".agents/skills dir",
+      ".agents/skills/alive dir",
+      ".claude dir",
+      ".claude/skills dir",
+      ".hermes dir",
+      ".hermes/skills dir",
+      ".hermes/skills/foreign-dangling link -> /nowhere/foreign-target",
+      ".hermes/skills/ours-dangling-abs link -> $HOME/.agents/skills/gone",
+      ".hermes/skills/ours-dangling-rel link -> ../../.agents/skills/gone2",
+      ".hermes/skills/ours-valid link -> $HOME/.agents/skills/alive",
+      ".hermes/skills/real-dir dir",
+      ".hermes/skills/real-dir/SKILL.md file"
+    ]
+  }
+}

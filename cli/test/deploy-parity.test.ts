@@ -1,14 +1,15 @@
-// Parity assertion for the `skm deploy` port (ADR 0014 implementation-plan item 3):
-// the TS resolution path and the original deploy-project-skills.sh, run against the
-// SAME fixture families (curated specs, `.skills.local.json` familySpecs /
-// excludeFamilySpecs / customFamilies, and whole-repo exclude expansion), must
-// produce identical RESOLVED INSTALL PLANS — the ordered `skills add --copy` argv.
+// Golden-backed parity for the `skm deploy` port (ADR 0014 implementation-plan item 3).
+// The bash script deploy-project-skills.sh was deleted at the ADR 0014 final commit;
+// its resolved install plans (the ordered `skills add --copy` argv) and the upstream
+// enumerator results were captured one final time into
+// test/fixtures/parity-goldens/deploy.json (see that dir's README). These tests assert
+// the TS resolution path reproduces those goldens for the SAME fixture families
+// (curated specs, `.skills.local.json` familySpecs / excludeFamilySpecs / customFamilies,
+// and whole-repo exclude expansion).
 //
-// No network / no real `skills` CLI: the bash script runs with a stubbed `skills`
-// (records argv) and a stubbed `git` (clones a fixture layout of SKILL.md files);
-// the TS side uses a stub enumerator over the same upstream table. Both are driven
-// by --dry-run-equivalent resolution — bash executes the install loop against the
-// argv-recording shim rather than the network.
+// The TS side needs no bash and no network: the install-plan scenarios resolve through a
+// stub enumerator over the upstream table; the enumerator-parity scenarios exercise the
+// production git enumerator against a `git` shim (still bash+jq, but not the deleted script).
 
 import { execFileSync, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -26,12 +27,20 @@ import { repoRootDir } from "./util";
 
 const AGENTS = ["claude-code", "codex"];
 
-// Upstream enumeration table (bash's git clone stands in for this). Both the git
-// shim and the TS stub enumerator read the same map, so the two sides see identical
+interface DeployGolden {
+  scenarios: Record<string, string[][]>;
+  enumerator: Record<string, string[]>;
+}
+const GOLDEN: DeployGolden = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dir, "fixtures", "parity-goldens", "deploy.json"), "utf8"),
+);
+
+// Upstream enumeration table (matches the git shim the goldens were captured with). Both
+// the git shim and the TS stub enumerator read the same map, so the two sides see identical
 // whole-repo expansions.
-// A "ROOT:<name>" entry makes the git shim write a ROOT-level SKILL.md whose
-// frontmatter `name:` is <name> (the single-skill repo layout); "ROOTBARE" writes a
-// root SKILL.md with no frontmatter name. Used by the enumerator parity tests.
+// A "ROOT:<name>" entry makes the git shim write a ROOT-level SKILL.md whose frontmatter
+// `name:` is <name> (the single-skill repo layout); "ROOTBARE" writes a root SKILL.md with
+// no frontmatter name. Used by the enumerator parity tests.
 const UPSTREAM: Record<string, string[]> = {
   "owner/repo": ["a", "b"],
   "other/repo": ["x"],
@@ -57,11 +66,11 @@ const FAMILIES: Record<string, string> = {
 };
 const INDEX = "demo\tDemo family\nwide\tWide family\nmix\tMix family\n";
 
-const DEPLOY_SCRIPT = path.join(repoRootDir(), "deploy-project-skills.sh");
+// The enumerator-parity scenarios drive the production git enumerator against a `git`
+// shim, which is a bash+jq script (not the deleted deploy script).
 const hasBash = spawnSync("bash", ["-c", "true"]).status === 0;
 const hasJq = spawnSync("bash", ["-c", "command -v jq"]).status === 0;
-const hasScript = fs.existsSync(DEPLOY_SCRIPT);
-const enabled = hasBash && hasJq && hasScript;
+const enumeratorEnabled = hasBash && hasJq;
 
 let base: string;
 let catalogDir: string;
@@ -86,7 +95,7 @@ beforeAll(() => {
   targetDir = path.join(base, "target");
   fs.mkdirSync(targetDir, { recursive: true });
 
-  // Shim bin dir shadowing `git` (fake clone) and `skills` (argv recorder).
+  // Shim bin dir shadowing `git` (fake clone) for the TS enumerator-parity scenarios.
   shimDir = path.join(base, "shim");
   fs.mkdirSync(shimDir, { recursive: true });
   const gitShim = `#!/usr/bin/env bash
@@ -113,55 +122,12 @@ while IFS= read -r s; do
 done < <(jq -r --arg r "$repo" '.[$r][]?' "$PARITY_UPSTREAM_JSON")
 exit 0
 `;
-  const skillsShim = `#!/usr/bin/env bash
-set -euo pipefail
-line=""
-for a in "$@"; do line="$line$a"$'\\x1f'; done
-printf '%s\\n' "$line" >> "$PARITY_SKILLS_LOG"
-exit 0
-`;
   fs.writeFileSync(path.join(shimDir, "git"), gitShim, { mode: 0o755 });
-  fs.writeFileSync(path.join(shimDir, "skills"), skillsShim, { mode: 0o755 });
 });
 
 afterAll(() => {
   fs.rmSync(base, { recursive: true, force: true });
 });
-
-/** Run the bash deploy script with the shims; return the recorded `skills add` argv. */
-function runBash(familyArgs: string[]): string[][] {
-  const log = path.join(base, `skills-${Math.random().toString(36).slice(2)}.log`);
-  const args = [
-    DEPLOY_SCRIPT,
-    "--target",
-    targetDir,
-    "--agents",
-    AGENTS.join(" "),
-    "--yes",
-    ...familyArgs,
-  ];
-  const res = execFileSync("bash", args, {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: `${shimDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      SKILL_CATALOG_DIR: catalogDir,
-      LOCAL_SKILLS_CONFIG_FILE: configFile,
-      SKILLS_BIN: "skills",
-      SKILLS_AUDIT_REPO_COVERAGE: "0",
-      PARITY_UPSTREAM_JSON: upstreamJson,
-      PARITY_SKILLS_LOG: log,
-      HOME: base,
-    },
-  });
-  void res;
-  if (!fs.existsSync(log)) return [];
-  return fs
-    .readFileSync(log, "utf8")
-    .split("\n")
-    .filter((l) => l.length > 0)
-    .map((l) => l.split("\x1f").filter((f) => f.length > 0));
-}
 
 /** Resolve the same plan through the TS path; return the synthesized `skills add` argv. */
 function runTs(families: string[]): string[][] {
@@ -178,26 +144,26 @@ function runTs(families: string[]): string[][] {
   return plan.batches.map((b) => batchToSkillsArgs(b, AGENTS));
 }
 
-describe.skipIf(!enabled)("skm deploy ↔ deploy-project-skills.sh install-plan parity", () => {
-  const scenarios: { name: string; familyFlags: string[]; families: string[] }[] = [
-    { name: "explicit family + familySpecs override", familyFlags: ["--family", "demo"], families: ["demo"] },
-    { name: "whole-repo partial exclusion", familyFlags: ["--family", "wide"], families: ["wide"] },
-    { name: "mixed preserve-wide + partial exclusion", familyFlags: ["--family", "mix"], families: ["mix"] },
-    { name: "custom family", familyFlags: ["--family", "mine"], families: ["mine"] },
-    {
-      name: "multiple families dedupe",
-      familyFlags: ["--family", "demo", "--family", "mine"],
-      families: ["demo", "mine"],
-    },
-    { name: "all families", familyFlags: ["--all-families"], families: [] },
+describe("skm deploy install-plan parity (golden: deploy-project-skills.sh)", () => {
+  const scenarios: { name: string; families: string[] }[] = [
+    { name: "explicit family + familySpecs override", families: ["demo"] },
+    { name: "whole-repo partial exclusion", families: ["wide"] },
+    { name: "mixed preserve-wide + partial exclusion", families: ["mix"] },
+    { name: "custom family", families: ["mine"] },
+    { name: "multiple families dedupe", families: ["demo", "mine"] },
+    { name: "all families", families: [] },
   ];
 
   for (const s of scenarios) {
     test(s.name, () => {
-      const families = s.families.length > 0 ? s.families : listFamilies(loadDeployCatalog(catalogDir, configFile)).map((r) => r.name);
-      const bash = runBash(s.familyFlags);
+      const families =
+        s.families.length > 0
+          ? s.families
+          : listFamilies(loadDeployCatalog(catalogDir, configFile)).map((r) => r.name);
+      const golden = GOLDEN.scenarios[s.name];
+      expect(golden).toBeDefined();
       const ts = runTs(families);
-      expect(ts).toEqual(bash);
+      expect(ts).toEqual(golden!);
       expect(ts.length).toBeGreaterThan(0);
     });
   }
@@ -205,31 +171,16 @@ describe.skipIf(!enabled)("skm deploy ↔ deploy-project-skills.sh install-plan 
 
 // ── enumerator parity: root SKILL.md naming ──────────────────────────────────
 // The upstream skill-name enumeration itself (a port of lib/upstream-audit.sh
-// collect_upstream_skill_names) must agree with bash — including the disputed case
-// of a ROOT SKILL.md whose frontmatter `name:` differs from the repo basename:
-// bash overrides the repo-derived name with the frontmatter name UNCONDITIONALLY
-// (lib/upstream-audit.sh lines 89-96), and the TS enumerator must do the same.
-
-/** Run bash collect_upstream_skill_names (sorted-unique, as its cached wrapper does). */
-function bashEnumerate(repo: string): string[] {
-  const script = `source "${path.join(repoRootDir(), "lib", "upstream-audit.sh")}" && collect_upstream_skill_names "$1" | sort -u`;
-  const out = execFileSync("bash", ["-c", script, "bash", repo], {
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      PATH: `${shimDir}${path.delimiter}${process.env.PATH ?? ""}`,
-      PARITY_UPSTREAM_JSON: upstreamJson,
-      HOME: base,
-    },
-  });
-  return out.split("\n").filter((l) => l.length > 0);
-}
+// collect_upstream_skill_names) must agree with the recorded bash golden — including
+// the disputed case of a ROOT SKILL.md whose frontmatter `name:` differs from the repo
+// basename: bash overrode the repo-derived name with the frontmatter name
+// UNCONDITIONALLY, and the TS enumerator must do the same.
 
 /**
- * Run the TS production enumerator with the same git shim on PATH. Spawned as a
- * bun subprocess with the shim env: Bun resolves execFileSync binaries against the
- * process's ORIGINAL environ, so an in-process PATH mutation would still hit the
- * real network `git` — the subprocess starts with the shim already first on PATH.
+ * Run the TS production enumerator with the git shim on PATH. Spawned as a bun
+ * subprocess with the shim env: Bun resolves execFileSync binaries against the
+ * process's ORIGINAL environ, so an in-process PATH mutation would still hit the real
+ * network `git` — the subprocess starts with the shim already first on PATH.
  */
 function tsEnumerate(repo: string): string[] {
   const script = path.join(base, "ts-enumerate.ts");
@@ -253,38 +204,32 @@ function tsEnumerate(repo: string): string[] {
   return JSON.parse(out) as string[];
 }
 
-describe.skipIf(!enabled)("upstream enumerator ↔ collect_upstream_skill_names parity", () => {
+describe.skipIf(!enumeratorEnabled)("upstream enumerator parity (golden: collect_upstream_skill_names)", () => {
   test("root SKILL.md with a frontmatter name differing from the repo basename", () => {
-    const bash = bashEnumerate("rooty/repo");
     const ts = tsEnumerate("rooty/repo");
-    expect(ts).toEqual(bash);
+    expect(ts).toEqual(GOLDEN.enumerator["rooty/repo"]!);
     // Both sides yield the FRONTMATTER name (bash's unconditional override).
     expect(ts).toEqual(["custom-name"]);
   });
 
   test("root SKILL.md without a frontmatter name falls back to the repo basename", () => {
-    const bash = bashEnumerate("bare/repo");
     const ts = tsEnumerate("bare/repo");
-    expect(ts).toEqual(bash);
+    expect(ts).toEqual(GOLDEN.enumerator["bare/repo"]!);
     expect(ts).toEqual(["repo"]);
   });
 
   test("multi-skill layout enumerates every SKILL.md", () => {
-    const bash = bashEnumerate("mix/b");
     const ts = tsEnumerate("mix/b");
-    expect(ts).toEqual(bash);
+    expect(ts).toEqual(GOLDEN.enumerator["mix/b"]!);
     expect(ts).toEqual(["s1", "s2", "s3"]);
   });
 });
 
-// Guard-rail: if the toolchain is unavailable the parity suite silently skips, which
-// could mask a real regression. This test fails loudly only in that case so a broken
-// environment is visible rather than green-by-omission.
-test("parity toolchain availability (informational)", () => {
-  if (!enabled) {
-    console.warn(
-      `deploy parity suite skipped: bash=${hasBash} jq=${hasJq} script=${hasScript}`,
-    );
+// Guard-rail: if the enumerator toolchain is unavailable the enumerator suite silently
+// skips. This test fails loudly only in that case so a broken environment is visible.
+test("enumerator toolchain availability (informational)", () => {
+  if (!enumeratorEnabled) {
+    console.warn(`deploy enumerator parity skipped: bash=${hasBash} jq=${hasJq}`);
   }
   expect(true).toBe(true);
 });

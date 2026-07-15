@@ -69,7 +69,7 @@ skm upstream sync                        sync global upstream skills (remove sta
 ```
 
 `skm deploy` (ADR 0014 decision 3) copies curated / custom skill **families**
-into a project directory via `skills add --copy` — a port of
+into a project directory via `skills add --copy` — the port of the retired
 `deploy-project-skills.sh` on the copy path. It reads the curated catalog
 (`catalog/families.tsv` + `catalog/families/*.txt`) plus the `.skills.local.json`
 `familySpecs` / `excludeFamilySpecs` / `customFamilies` overrides (validated),
@@ -79,7 +79,7 @@ interactive prompt mode is dropped (`--list-families` + flags are the human path
 Deployed copies are **not skm-owned**: `deploy` never reads or writes `state.json`
 (ADR 0014 ownership boundary), so it coexists with `plan`/`apply`.
 
-`skm upstream sync` (ADR 0014 decision 4) is the cutover port of
+`skm upstream sync` (ADR 0014 decision 4) is the port of the retired
 `install-repro-skills.sh`: it diffs the desired set in
 `catalog/global-specs.txt` (+ `.skills.local.json` `globalSpecs` /
 `excludeGlobalSpecs` / `preserveGlobalSkillNames`, validated) against
@@ -129,21 +129,23 @@ reviewed plan (refused if the desired-state hash changed). Every verb supports
 
 ## Relationship to the bash scripts
 
-skm owns local-skill placement outright: `link-skills.sh` was retired at
-placement parity (gate awareness, hermes add-only, stale-link pruning are
-covered by `cli/test`). ADR 0014 completes the migration: `skm deploy` ports
-`deploy-project-skills.sh` on the copy path (decision 3;
-`test/deploy-parity.test.ts` diffs the two paths' resolved install plans) and
-**`skm upstream sync` is now the cutover path** for unscoped upstream sync
-(decision 4; `test/upstream-sync-parity.test.ts` asserts the destructive
-edges — Hermes add-only narrowing and sweep, OpenClaw/diffwarden flags,
-preserve-lists, excludes — against the bash script on identical fixtures).
-`install-repro-skills.sh`, `deploy-project-skills.sh`, and `lib/*.sh` are
-**in soak**: kept in place for one post-cutover soak period, unedited;
-deletion (+ bash-test → golden conversion and root doc-surface
-reconciliation) is a separate final commit with the parity evidence. skm
-never deletes what it does not own — and neither new verb touches
-`state.json` — so it coexists safely with the bash path throughout the soak.
+The bash scripts are **retired**. skm is the sole owner of the whole surface.
+`link-skills.sh` went first, at local-skill placement parity (gate awareness,
+hermes add-only, stale-link pruning are covered by `cli/test`). ADR 0014
+completed the migration: `skm deploy` is the port of `deploy-project-skills.sh`
+on the copy path (decision 3) and `skm upstream sync` is the port of
+`install-repro-skills.sh` (decision 4). At the ADR 0014 final commit
+`install-repro-skills.sh`, `deploy-project-skills.sh`, and `lib/*.sh` were
+deleted, and the live-bash parity suites became golden-backed:
+`test/deploy-parity.test.ts` and `test/upstream-sync-parity.test.ts` now assert
+the TS paths against `test/fixtures/parity-goldens/{deploy,sync}.json` — the
+bash scripts' recorded install plans / `skills` argv / filesystem state,
+captured one final time from those scripts the moment before deletion. The
+destructive edges (Hermes add-only narrowing and sweep, OpenClaw/diffwarden
+flags, preserve-lists, excludes) survive as golden assertions. skm never
+deletes what it does not own — and neither the `deploy` nor `upstream sync`
+verb touches `state.json` (ADR 0014 ownership boundary). Scoped upstream
+vendoring (design §5, phase 7) stays deferred.
 
 ## Development
 

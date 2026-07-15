@@ -15,9 +15,9 @@ import * as path from "node:path";
 import { SPEC_LINE } from "../catalog-specs";
 import { type CuratedFamilyLookup, type LocalSkillsConfig, loadLocalSkillsConfig } from "./local-config";
 
-// ── spec helpers (ports of lib/catalog.sh spec_has_explicit_skill / spec_repo / spec_skill).
-// Exported: the upstream-sync port (src/upstream/) shares them, exactly as the two bash
-// scripts share lib/catalog.sh. ──
+// ── spec helpers (ports of the retired lib/catalog.sh spec_has_explicit_skill / spec_repo
+// / spec_skill). Exported: the upstream-sync port (src/upstream/) shares them, exactly as
+// the two retired bash scripts shared lib/catalog.sh. ──
 
 export function specHasExplicitSkill(spec: string): boolean {
   return spec.includes("@");

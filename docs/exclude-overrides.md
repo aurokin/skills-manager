@@ -28,14 +28,14 @@ Add these optional keys to `.skills.local.json`:
 
 - `excludeGlobalSpecs`
   exclusions applied to the merged global set used by
-  `install-repro-skills.sh`; accepts repo-wide `owner/repo` and explicit
+  `skm upstream sync`; accepts repo-wide `owner/repo` and explicit
   `owner/repo@skill-name` entries
 - `preserveGlobalSkillNames`
   exact global skill names protected from stale removal by
-  `install-repro-skills.sh`; accepts names only, not upstream specs
+  `skm upstream sync`; accepts names only, not upstream specs
 - `excludeFamilySpecs`
   exclusions keyed by curated family name, applied only to that family's merged
-  set during `deploy-project-skills.sh`; accepts explicit
+  set during `skm deploy`; accepts explicit
   `owner/repo@skill-name` entries only
 
 ## Merge Order
@@ -105,13 +105,13 @@ out of the final resolved set even if it was also added locally.
 
 - Some repo-wide include and exclude cases require enumerating current upstream
   skills.
-- `install-repro-skills.sh` prints a resolved global summary from the final
+- `skm upstream sync` prints a resolved global summary from the final
   post-exclusion explicit set before mutating installed upstream skills.
-- `deploy-project-skills.sh` also enumerates current upstream skills when it
+- `skm deploy` also enumerates current upstream skills when it
   needs to print exact resolved repo summaries and `^` full-coverage markers,
   even when the selected family specs are already explicit.
-- `deploy-project-skills.sh` prints the final post-exclusion planned install
-  set before prompting or copying skills.
+- `skm deploy` prints the final post-exclusion planned install
+  set before copying skills.
 - `^` means the final resolved set covers every currently enumerated upstream
   skill for that repo.
 - That means deploys, including `--dry-run`, require `git` whenever exact
@@ -142,16 +142,18 @@ out of the final resolved set even if it was also added locally.
 
 ## Verification Notes
 
-- The shell integration suites in
-  [maintenance/test-install-repro-skills.sh](/Users/auro/code/custom_skills/maintenance/test-install-repro-skills.sh)
+- The golden-backed parity suites
+  [cli/test/upstream-sync-parity.test.ts](../cli/test/upstream-sync-parity.test.ts)
   and
-  [maintenance/test-deploy-project-skills.sh](/Users/auro/code/custom_skills/maintenance/test-deploy-project-skills.sh)
-  cover exclusion precedence, repo-wide normalization, empty results, resolved
-  summaries, `^` marker behavior, validation failures, and exclusion-aware
-  coverage audit.
-- These tests assert observable behavior and exact CLI arguments rather than
-  internal helper structure, which keeps the documented guarantees tied to the
-  actual command surface.
+  [cli/test/deploy-parity.test.ts](../cli/test/deploy-parity.test.ts)
+  cover exclusion precedence, repo-wide normalization, resolved summaries,
+  `^` marker behavior, and exclusion-aware coverage audit against the retired
+  bash scripts' captured output (`cli/test/fixtures/parity-goldens/`). Broader
+  validation and empty-result cases live in the `skm` unit suites
+  (`cli/test/deploy-*.test.ts`).
+- These tests assert observable behavior and exact `skills` CLI arguments
+  rather than internal helper structure, which keeps the documented guarantees
+  tied to the actual command surface.
 
 ## Examples
 
