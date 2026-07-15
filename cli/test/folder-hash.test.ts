@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { gitTreeHash, matchesSkillFolderHash, skillsCliFolderHash } from "../src/folder-hash";
+import { gitTreeHash, skillsCliFolderHash, verifySkillFolderHash } from "../src/folder-hash";
 
 let base: string;
 beforeEach(() => {
@@ -79,14 +79,22 @@ describe("skillsCliFolderHash", () => {
   });
 });
 
-describe("matchesSkillFolderHash", () => {
-  test("dispatches on hash format and never attests on junk", () => {
+describe("verifySkillFolderHash", () => {
+  test("dispatches on hash format: match and mismatch per algorithm", () => {
     const dir = makeGoldenTree();
-    expect(matchesSkillFolderHash(dir, GOLDEN_TREE_SHA)).toBe(true);
-    expect(matchesSkillFolderHash(dir, GOLDEN_SHA256)).toBe(true);
-    expect(matchesSkillFolderHash(dir, "a".repeat(40))).toBe(false);
-    expect(matchesSkillFolderHash(dir, "")).toBe(false); // the CLI's "no hash" record
-    expect(matchesSkillFolderHash(dir, "not-a-hash")).toBe(false);
-    expect(matchesSkillFolderHash(path.join(base, "missing"), GOLDEN_TREE_SHA)).toBe(false);
+    expect(verifySkillFolderHash(dir, GOLDEN_TREE_SHA)).toBe("match");
+    expect(verifySkillFolderHash(dir, GOLDEN_SHA256)).toBe("match");
+    expect(verifySkillFolderHash(dir, "a".repeat(40))).toBe("mismatch");
+    expect(verifySkillFolderHash(dir, "b".repeat(64))).toBe("mismatch");
+  });
+
+  test("cannot-check is unverifiable, never a mismatch", () => {
+    const dir = makeGoldenTree();
+    // The CLI writes "" when it could not record a hash; foreign shapes too.
+    expect(verifySkillFolderHash(dir, "")).toBe("unverifiable");
+    expect(verifySkillFolderHash(dir, "not-a-hash")).toBe("unverifiable");
+    // Local hashing failure (missing or empty dir) is equally uncheckable.
+    expect(verifySkillFolderHash(path.join(base, "missing"), GOLDEN_TREE_SHA)).toBe("unverifiable");
+    expect(verifySkillFolderHash(path.join(dir, "empty"), GOLDEN_TREE_SHA)).toBe("unverifiable");
   });
 });

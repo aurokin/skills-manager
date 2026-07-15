@@ -454,6 +454,33 @@ describe("review model", () => {
     expect(rogue?.marker).toBe("modified since install");
   });
 
+  test("uncheckable lock hashes mark entries unverifiable, never modified", async () => {
+    const root = makeRoot(sb, "public");
+    makeSkill(root.path, "plain-skill");
+    writeCatalog(root.path);
+    writeMachineConfig(sb, { version: 1, roots: [root], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    // The CLI records "" when it could not compute a hash (still installed fine).
+    writeUpstreamDir("upstream-skill");
+    // A valid recorded hash, but the local dir is empty: local hashing fails.
+    fs.mkdirSync(path.join(sb.home, ".agents", "skills", "hollow-skill"), { recursive: true });
+    writeLock({
+      "upstream-skill": lockRecord(""),
+      "hollow-skill": lockRecord("c".repeat(40)),
+    });
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const shared = model.inventory.find((d) => d.path.endsWith(".agents/skills"));
+    const noHash = shared?.entries.find((e) => e.name === "upstream-skill");
+    expect(noHash?.kind).toBe("upstream");
+    expect(noHash?.label).toContain("catalog-expected · acme/upstream-skills");
+    expect(noHash?.marker).toBe("install hash unverifiable");
+    const hollow = shared?.entries.find((e) => e.name === "hollow-skill");
+    expect(hollow?.kind).toBe("dir");
+    expect(hollow?.marker).toBe("install hash unverifiable");
+  });
+
   test("unreadable lock degrades loudly on the model; entries fall back to catalog", async () => {
     const root = makeRoot(sb, "public");
     makeSkill(root.path, "plain-skill");

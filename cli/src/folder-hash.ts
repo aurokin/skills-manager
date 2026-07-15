@@ -105,12 +105,20 @@ export function skillsCliFolderHash(dir: string): string | undefined {
 }
 
 /**
- * Does the directory's current content match a lock skillFolderHash? Dispatch
- * on the recorded format: 40 hex = git tree SHA, 64 hex = CLI sha256. Any
- * other shape (including the CLI's empty-string "no hash") can never attest.
+ * Verify a directory's current content against a lock skillFolderHash,
+ * dispatching on the recorded format: 40 hex = git tree SHA, 64 hex = CLI
+ * sha256. Three outcomes, because "cannot check" must never read as
+ * "modified": the CLI itself writes an empty skillFolderHash when it could
+ * not record one (and skips such entries in its own update check), and local
+ * hashing can fail on an unreadable or empty directory.
  */
-export function matchesSkillFolderHash(dir: string, lockHash: string): boolean {
-  if (/^[0-9a-f]{40}$/.test(lockHash)) return gitTreeHash(dir) === lockHash;
-  if (/^[0-9a-f]{64}$/.test(lockHash)) return skillsCliFolderHash(dir) === lockHash;
-  return false;
+export type FolderHashVerdict = "match" | "mismatch" | "unverifiable";
+
+export function verifySkillFolderHash(dir: string, lockHash: string): FolderHashVerdict {
+  let computed: string | undefined;
+  if (/^[0-9a-f]{40}$/.test(lockHash)) computed = gitTreeHash(dir);
+  else if (/^[0-9a-f]{64}$/.test(lockHash)) computed = skillsCliFolderHash(dir);
+  else return "unverifiable"; // includes the CLI's empty-string "no hash" records
+  if (computed === undefined) return "unverifiable";
+  return computed === lockHash ? "match" : "mismatch";
 }

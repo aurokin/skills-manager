@@ -7,7 +7,7 @@ import * as path from "node:path";
 import { loadCatalogSpecs } from "../catalog-specs";
 import type { SkmContext } from "../context";
 import { type SkmEnv, expandTilde } from "../env";
-import { matchesSkillFolderHash } from "../folder-hash";
+import { verifySkillFolderHash } from "../folder-hash";
 import { loadSkillLock } from "../skill-lock";
 import { computeDesiredPlacements, type DesiredPlacement } from "../placements";
 import { renderComposedSkill, type RenderedComposedTree } from "../composed/render";
@@ -526,10 +526,13 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       } else if (lock.entries[name]) {
         // Attested origin (ADR 0014), hash-gated: the lock is the `skills`
         // CLI's self-report, claimable only while the dir still matches its
-        // recorded skillFolderHash. On mismatch, fall back to the catalog
-        // expectation plus an explicit marker — never a silent downgrade.
+        // recorded skillFolderHash. Otherwise fall back to the catalog
+        // expectation plus an explicit marker — never a silent downgrade,
+        // and never "modified" when the hash merely could not be checked
+        // (empty/foreign hash record, unreadable or empty directory).
         const rec = lock.entries[name]!;
-        if (matchesSkillFolderHash(abs, rec.skillFolderHash)) {
+        const verdict = verifySkillFolderHash(abs, rec.skillFolderHash);
+        if (verdict === "match") {
           kind = "attested";
           label = `attested · ${rec.sourceUrl || rec.source}`;
         } else {
@@ -537,7 +540,7 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
             kind = "upstream";
             label = `catalog-expected · ${catalog.bySkillName[name]}`;
           }
-          marker = "modified since install";
+          marker = verdict === "mismatch" ? "modified since install" : "install hash unverifiable";
         }
       } else if (catalog.bySkillName[name]) {
         kind = "upstream";
