@@ -78,6 +78,9 @@
   .dot.plain { background: var(--ink-3); }
   .dot.inv { background: var(--accent); }
   .dot.drift { background: var(--gated); box-shadow: 0 0 0 3px var(--gated-soft); }
+  .dot.off { background: transparent; border: 1px solid var(--ink-3); }
+  .unit-btn.off .n { color: var(--ink-3); }
+  .unit-btn.off .meta .off-tag { text-transform: uppercase; letter-spacing: .06em; }
   .side-foot { padding: 10px 16px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
 
   /* ── main ── */
@@ -92,6 +95,7 @@
   .badge.gated { color: var(--gated); border-color: var(--gated); background: var(--gated-soft); }
   .badge.composed, .badge.agent { color: var(--render); border-color: var(--render); background: var(--render-soft); }
   .badge.private { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+  .badge.disabled { color: var(--ink-3); border-color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
   .note { color: var(--ink-2); font-size: 13px; max-width: 78ch; margin: 8px 0 0; }
   .variant-row { display: flex; align-items: center; gap: 14px; margin: 12px 0 0; flex-wrap: wrap; }
   .variant-label { font-size: 10px; text-transform: uppercase; letter-spacing: .12em; color: var(--ink-3); font-weight: 600; }
@@ -337,6 +341,7 @@ function hasDrift(u) {
   return (u.placements || []).some((p) => p.status !== "clean");
 }
 function dotClass(u) {
+  if (u.disabled) return "off";
   if (hasDrift(u)) return "drift";
   if (u.badges.includes("gated")) return "gated";
   if (u.badges.includes("composed") || u.badges.includes("agent")) return "composed";
@@ -377,12 +382,14 @@ function renderTree() {
     tree.appendChild(lbl);
     for (const u of units) {
       const b = document.createElement("button");
-      b.className = "unit-btn" + (u.id === cur.unit ? " active" : "");
+      b.className = "unit-btn" + (u.id === cur.unit ? " active" : "") + (u.disabled ? " off" : "");
       const nFiles = u.variants[0].files.length;
       const nVar = u.matrix ? Object.keys(u.matrix.cells).length + 1 : u.variants.length;
-      if (hasDrift(u)) b.title = "a deployed placement drifts from what skm would render";
+      if (u.disabled) b.title = "disabled on this machine (export: none override)";
+      else if (hasDrift(u)) b.title = "a deployed placement drifts from what skm would render";
+      const meta = u.disabled ? `<span class="off-tag">off</span>` : `${nFiles}f${nVar > 1 ? " · " + nVar + "v" : ""}`;
       b.innerHTML = `<span class="dot ${dotClass(u)}"></span><span class="n">${esc(u.name)}</span>` +
-        `<span class="meta">${nFiles}f${nVar > 1 ? " · " + nVar + "v" : ""}</span>`;
+        `<span class="meta">${meta}</span>`;
       b.onclick = () => {
         const posture = u.matrix ? u.matrix.sourcePosture : cur.posture;
         cur = { unit: u.id, variant: "source", consumer: "source", posture, ghosts: false };

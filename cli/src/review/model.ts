@@ -10,6 +10,7 @@ import { type SkmEnv, expandTilde } from "../env";
 import { computeDesiredPlacements, type DesiredPlacement } from "../placements";
 import { renderComposedSkill, type RenderedComposedTree } from "../composed/render";
 import { PROVIDER_POOL_DIR } from "../composed/source";
+import { isAgentDefDir } from "../agentdef/source";
 import { lineDiff } from "./linediff";
 import { computeDrift } from "../status";
 import type { DriftClass, Posture } from "../types";
@@ -71,6 +72,9 @@ export interface ReviewUnit {
   /** EVERY desired placement joined against drift — including `missing` ones
    *  with nothing on disk. Variants carry content; this carries accuracy. */
   placements: ReviewDeployed[];
+  /** Agent def whose effective export is "none" (host-local disable stub):
+   *  metadata, so the page can mark it structurally instead of via stub prose. */
+  disabled?: boolean;
 }
 
 export interface ReviewInvEntry {
@@ -364,9 +368,31 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
 
   // ── Agent definitions: source + every rendered placement ──
   for (const def of desired.agentDefs) {
-    const variants: ReviewVariant[] = [
-      { key: "source", label: "Source", root: tilde(env, def.source.path), files: listTree(def.source.path) },
-    ];
+    const disabled = def.exportMode === "none";
+    const variants: ReviewVariant[] = [];
+    // Roots defining this name in config order; the last wins (resolve
+    // semantics). When the winner is a disable stub, the shadowed definition
+    // stays reviewable as the primary variant — the stub is the override.
+    const shadowedDirs = config.roots
+      .map((r) => ({ root: r, dir: path.join(r.path, "agents", def.name) }))
+      .filter((x) => isAgentDefDir(x.dir) && path.resolve(x.dir) !== path.resolve(def.source.path));
+    if (disabled && shadowedDirs.length) {
+      const shadowed = shadowedDirs[shadowedDirs.length - 1]!;
+      variants.push({
+        key: "source",
+        label: `Source (${shadowed.root.name})`,
+        root: tilde(env, shadowed.dir),
+        files: listTree(shadowed.dir),
+      });
+      variants.push({
+        key: "override",
+        label: `override (${def.source.root})`,
+        root: tilde(env, def.source.path),
+        files: listTree(def.source.path),
+      });
+    } else {
+      variants.push({ key: "source", label: "Source", root: tilde(env, def.source.path), files: listTree(def.source.path) });
+    }
     const defPlacements: ReviewDeployed[] = [];
     for (const dp of agentDefPlacements.get(def.name) ?? []) {
       const p = dp.placement;
@@ -391,9 +417,13 @@ export function buildReviewModel(env: SkmEnv, ctx: SkmContext): ReviewModel {
       id: `agent-${def.name}`,
       group: "Agent definitions",
       name: def.name,
-      badges: ["agent", def.exportMode],
+      badges: disabled ? ["agent", "disabled"] : ["agent", def.exportMode],
+      note: disabled
+        ? `Disabled on ${env.machineName}: root '${def.source.root}' overrides with export: none. Nothing is rendered to any harness here.`
+        : undefined,
       variants,
       placements: defPlacements,
+      disabled: disabled || undefined,
     });
   }
 

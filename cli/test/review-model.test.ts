@@ -299,6 +299,29 @@ describe("review model", () => {
     expect(model.docs[entry!.doc!]?.skill).toContain("plain body");
   });
 
+  test("export:none override marks the unit disabled and keeps the shadowed def reviewable", async () => {
+    const pub = makeRoot(sb, "public");
+    makeAgentDef(pub.path, "helper-agent", { instructions: "The real instructions.\n" });
+    const local = makeRoot(sb, "local", "private");
+    makeAgentDef(local.path, "helper-agent", {
+      agentYaml: { export: "none" },
+      instructions: "Host-local disable stub.\n",
+    });
+    writeMachineConfig(sb, { version: 1, roots: [pub, local], agents: ["claude-code"] });
+    await runApply(sb.env, APPLY_OPTS);
+
+    const model = buildReviewModel(sb.env, loadContext(sb.env));
+    const unit = model.units.find((u) => u.name === "helper-agent");
+    expect(unit?.disabled).toBe(true);
+    expect(unit?.badges).toContain("disabled");
+    expect(unit?.note).toContain("export: none");
+    expect(unit?.placements).toEqual([]);
+    // The shadowed (real) definition is the primary variant; the stub is the override.
+    expect(unit?.variants[0]?.label).toBe("Source (public)");
+    expect(unit?.variants[0]?.files.some((f) => f.content.includes("The real instructions."))).toBe(true);
+    expect(unit?.variants[1]?.key).toBe("override");
+  });
+
   test("shared provider pools appear as source-only units per root", async () => {
     const root = makeRoot(sb, "public");
     makeSkill(root.path, "plain-skill");
