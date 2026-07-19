@@ -565,3 +565,15 @@ describe("all-routes-excluded consumers require guidance", () => {
     expect(skill.consumers["claude-code"]!.excludeProviders).toEqual(["codex"]);
   });
 });
+
+describe("inherited-property names are not providers/agents", () => {
+  test("excludeProviders naming an Object.prototype member is a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = ["constructor"];
+        }),
+      ),
+    ).toThrow(/excludeProviders names 'constructor', which is not a declared provider/);
+  });
+});

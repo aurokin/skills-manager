@@ -173,3 +173,15 @@ describe("agent-list edge shapes", () => {
     expect(() => loadMachineConfig(sandbox!.env, reg())).toThrow(/must be a list of agent ids/);
   });
 });
+
+describe("inherited-property names are not agents", () => {
+  test("an agent list naming an Object.prototype member is a config error", () => {
+    sandbox = makeSandbox();
+    writeMachineConfig(sandbox, {
+      version: 1,
+      roots: [{ name: "public", path: "~/x", visibility: "public" }],
+      optInAgents: ["constructor"],
+    });
+    expect(() => loadMachineConfig(sandbox!.env, reg())).toThrow(/unknown agent 'constructor'/);
+  });
+});

@@ -55,7 +55,7 @@ export function normalizeConfig(env: SkmEnv, raw: MachineConfig, reg: Registry):
       throw new ConfigError(`machine config \`${field}\` must be a list of agent ids`);
     }
     for (const id of list) {
-      if (!reg.agents[id]) {
+      if (!Object.hasOwn(reg.agents, id)) {
         throw new ConfigError(`machine config \`${field}\` names unknown agent '${id}'`);
       }
     }

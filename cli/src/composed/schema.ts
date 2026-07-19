@@ -404,7 +404,7 @@ function validateConsumersAgainstRegistry(
     // repeat the derived self (already auto-excluded — listing it would mask a later
     // ownDir rename), mirroring the selfProvider coherence checks above.
     for (const excluded of consumer.excludeProviders ?? []) {
-      if (!(excluded in providers)) {
+      if (!Object.hasOwn(providers, excluded)) {
         throw new ComposedSkillError(
           `Consumer '${id}' excludeProviders names '${excluded}', which is not a declared provider of this skill (${path})`,
         );
