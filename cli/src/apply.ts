@@ -19,10 +19,9 @@ import { loadMachineConfig } from "./machine-config";
 import { composedTreeFromSource, treeHashOfMemory, writeComposedTree } from "./composed/render";
 import { hashGatedTree, renderGatedTree, writeGatedTree } from "./gated";
 import { buildPlan, planHashOf } from "./plan";
-import { dialectForDir } from "./placements";
 import { privacyViolation } from "./privacy";
 import { loadRegistry } from "./registry";
-import { hashContent, renderSkill, renderedHash, treeHashOf } from "./render";
+import { dialectForDir, hashContent, renderSkill, renderedHash, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
 import { renderTpromptPrompt, tpromptPromptHash } from "./tprompt/render";
 import { scanEntry } from "./scan";
@@ -283,7 +282,7 @@ function materialize(
     fs.writeFileSync(path.join(abs, "SKILL.md"), md);
     upsertPlacement(state, keyOf(action), source, { agent: p.agent, path: abs, kind: "rendered", hash: hashContent(md), tree: treeHashOf(abs) });
   } else if (p.kind === "rendered") {
-    const dialect = dialectForDir(p.dir);
+    const dialect = dialectForDir(registry, p.dir);
     if (!dialect) throw new UsageError(`no rendering dialect for dir '${p.dir}'`);
     const skill: DesiredSkill = {
       name: action.skill,

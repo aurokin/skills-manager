@@ -21,6 +21,7 @@ design and the research behind these).
 | [0013](0013-skm-review.md) | `skm review` verb for the skill-surface console | accepted |
 | [0014](0014-upstream-sync-absorption.md) | Absorb upstream sync + family deploys into `skm`; lock-attested review provenance | accepted |
 | [0015](0015-machine-local-override-roots.md) | Machine-local override roots disable an agent definition per host via an `export: none` stub | accepted |
+| [0016](0016-data-only-agent-variants.md) | Data-only agent variants: registry-driven render channels, enablement, per-consumer provider exclusion | accepted |
 
 Convention: new ADRs take the next number, one decision per file, statuses
 `proposed → accepted → superseded by NNNN`.

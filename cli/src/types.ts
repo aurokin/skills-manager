@@ -73,13 +73,28 @@ export interface AgentCapability {
   ownDir?: string;
   dialect: Dialect;
   symlinks: SymlinkSupport;
-  /** claude-code / codex / github-copilot get rendered per-agent frontmatter. */
+  /**
+   * The agent has a first-party per-dialect frontmatter render channel: its own dir
+   * gets rendered per-agent frontmatter when its dialect is renderer-capable
+   * (RENDERER_DIALECTS). A CLAUDE_CONFIG_DIR variant of a first-party binary
+   * qualifies. `dialect ∈ RENDERER_DIALECTS` without this flag is legal and means
+   * deliberate symlink-only (a third-party clone that parses the dialect).
+   */
   firstParty?: boolean;
   /** Env vars that suppress bleed (e.g. OPENCODE_DISABLE_CLAUDE_CODE_SKILLS). */
   killSwitches?: string[];
   /** Placements are add-only; never pruned, never overwritten (hermes). */
   addOnly?: boolean;
+  /** Excluded from the default enabled set; machines enable via `agents`/`optInAgents`. */
+  optIn?: boolean;
+  /**
+   * When enabled, this agent receives unscoped skills in its own dir (it reads
+   * neither the shared nor the claude dir). Replaces the solver's former hardcoded
+   * enumeration; grok deliberately lacks it (reached only via maybeReads).
+   */
+  unscopedOwnDir?: boolean;
   evidence: string;
+  note?: string;
   // ── Agent-definition (subagent) directory support (ADRs 0007–0009). ──
   /** Whether this agent reads a user-global agent-definition directory. */
   agentDefSupport?: AgentDefSupport;
@@ -128,8 +143,10 @@ export interface Root {
 export interface MachineConfig {
   version: number;
   roots: Root[];
-  /** Enabled agent ids. Defaults to supported-minus-hermes when absent. */
+  /** Enabled agent ids (exact set). Defaults to supported-minus-optIn when absent. */
   agents?: string[];
+  /** Additive opt-ins on top of the default set. Mutually exclusive with `agents`. */
+  optInAgents?: string[];
   /** git origin remotes into whose worktrees private artifacts may be placed. Default []. */
   privateOriginAllowlist?: string[];
 }
@@ -330,6 +347,13 @@ export interface ComposedConsumer {
    * is NOT one of the declared providers. Only legal value is "none".
    */
   selfProvider?: "none";
+  /**
+   * Declared providers excluded from this consumer's routing beyond the derived
+   * self (e.g. a consumer that routes a provider's model family natively, so
+   * shelling out to that CLI is redundant-self, not delegation). Ids must be
+   * declared providers of this skill and must not repeat the derived self.
+   */
+  excludeProviders?: string[];
 }
 
 /** The two marker-split sections of a `consumers/<c>.md` file (both optional). */

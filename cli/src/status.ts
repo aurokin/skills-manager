@@ -6,10 +6,10 @@ import * as path from "node:path";
 import { agentDefFileHash, derivedSkillHash } from "./agentdef/artifact";
 import { loadContext } from "./context";
 import { type SkmEnv, expandTilde } from "./env";
-import { computeDesiredPlacements, dialectForDir } from "./placements";
+import { computeDesiredPlacements } from "./placements";
 import { computeTpromptPlacements } from "./tprompt/channel";
 import { privacyViolation } from "./privacy";
-import { hashContent, renderedHash, treeHashOf } from "./render";
+import { dialectForDir, hashContent, renderedHash, treeHashOf } from "./render";
 import { classifyTarget, scanEntry, scanForForeign } from "./scan";
 import { findOwner } from "./state";
 import { resolveTpromptCollisions } from "./tprompt/channel";
@@ -183,7 +183,7 @@ export function computeDrift(
         // source/override edit after apply changes the desired render while disk stays
         // at the old bytes, so plan would emit an update. Compare to the currently
         // desired render, not just to state, or status falsely reads clean (finding 5a).
-        const dialect = dialectForDir(dp.placement.dir);
+        const dialect = dialectForDir(registry, dp.placement.dir);
         const expected = dp.placement.derived
           ? derivedSkillHash(dp.source.path, dp.placement.agent === "hermes")
           : dialect && dp.desiredSkill

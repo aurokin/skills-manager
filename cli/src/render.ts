@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { SkmEnv } from "./env";
-import type { Dialect, DesiredSkill, RenderResult } from "./types";
+import type { Dialect, DesiredSkill, Registry, RenderResult } from "./types";
 import { doc, list } from "./render/doc";
 import type { Document, DocValue } from "./render/doc";
 import { emitYamlCanonical } from "./render/emit-yaml-canonical";
@@ -22,6 +22,30 @@ const CANONICAL_ORDER = [
   "metadata",
   "allowed-tools",
 ];
+
+/** Dialects this module has a first-party frontmatter renderer for. */
+export const RENDERER_DIALECTS: ReadonlySet<string> = new Set(["claude", "copilot", "codex"]);
+
+/** A dialect in RENDERER_DIALECTS (the only dialects a placement can render as). */
+export type RendererDialect = "claude" | "copilot" | "codex";
+
+/**
+ * Rendering dialect for a directory, derived from the registry: a dir has a render
+ * channel iff its owning agent (registry ownDir === dir) is `firstParty: true` AND
+ * its dialect is renderer-capable (RENDERER_DIALECTS — a property of this render
+ * code). `dialect ∈ RENDERER_DIALECTS` without firstParty is deliberate
+ * symlink-only (a third-party clone that parses the dialect). Single source of
+ * truth replacing the former hardcoded dir maps in solver.ts (renderKind),
+ * placements.ts (DIR_DIALECT), and gated.ts (FIRST_PARTY_DIR_DIALECT).
+ */
+export function dialectForDir(registry: Registry, dir: string): RendererDialect | undefined {
+  for (const agent of Object.values(registry.agents)) {
+    if (agent.ownDir === dir && agent.firstParty && RENDERER_DIALECTS.has(agent.dialect)) {
+      return agent.dialect as RendererDialect;
+    }
+  }
+  return undefined;
+}
 
 /** Compute the rendered SKILL.md text for a skill+dialect without touching disk. */
 export function renderedSkillMd(skill: DesiredSkill, dialect: Dialect): string {

@@ -2,7 +2,7 @@
 
 - Status: accepted
 - Date: 2026-07-11
-- Amended by: [ADR 0012](0012-shared-provider-pools.md) (shared provider pools; provider-set derivation)
+- Amended by: [ADR 0012](0012-shared-provider-pools.md) (shared provider pools; provider-set derivation), [ADR 0016](0016-data-only-agent-variants.md) (per-consumer `excludeProviders`; R4 stands)
 
 ## Context
 

@@ -198,7 +198,7 @@ function parseConsumers(raw: Mapping, path: string): Record<string, ComposedCons
     if (!isMapping(value)) {
       throw new ComposedSkillError(`Expected consumer '${id}' to be a mapping in ${path}`);
     }
-    rejectUnknownKeys(value, ["description", "selfProvider"], `Unknown keys for consumer '${id}' in ${path}`);
+    rejectUnknownKeys(value, ["description", "selfProvider", "excludeProviders"], `Unknown keys for consumer '${id}' in ${path}`);
     // A missing/empty description silently disables the skill in the loader, so it
     // is a build error, not a warning.
     const description = requiredStr(value, "description", `${path} (consumer '${id}')`);
@@ -210,6 +210,29 @@ function parseConsumers(raw: Mapping, path: string): Record<string, ComposedCons
         );
       }
       consumer.selfProvider = "none";
+    }
+    if ("excludeProviders" in value && value.excludeProviders !== undefined && value.excludeProviders !== null) {
+      const list = value.excludeProviders;
+      if (!Array.isArray(list) || list.length === 0) {
+        throw new ComposedSkillError(
+          `Expected excludeProviders for consumer '${id}' to be a non-empty list in ${path}`,
+        );
+      }
+      const seen = new Set<string>();
+      for (const entry of list) {
+        if (typeof entry !== "string" || entry.trim() === "") {
+          throw new ComposedSkillError(
+            `Expected excludeProviders entries for consumer '${id}' to be non-empty strings in ${path}`,
+          );
+        }
+        if (seen.has(entry)) {
+          throw new ComposedSkillError(
+            `excludeProviders for consumer '${id}' lists provider '${entry}' twice in ${path}`,
+          );
+        }
+        seen.add(entry);
+      }
+      consumer.excludeProviders = list as string[];
     }
     out[id] = consumer;
   }
@@ -352,6 +375,24 @@ function validateConsumersAgainstRegistry(
         `Consumer '${id}' declares 'selfProvider: none' but its registry ownDir '${selfDir}' IS a declared provider; ` +
           `remove the acknowledgment (${path})`,
       );
+    }
+
+    // excludeProviders is namespace-local: every id must be a declared provider of
+    // THIS skill (declared = referenced by dimensions, ADR 0012), and must not
+    // repeat the derived self (already auto-excluded — listing it would mask a later
+    // ownDir rename), mirroring the selfProvider coherence checks above.
+    for (const excluded of consumer.excludeProviders ?? []) {
+      if (!(excluded in providers)) {
+        throw new ComposedSkillError(
+          `Consumer '${id}' excludeProviders names '${excluded}', which is not a declared provider of this skill (${path})`,
+        );
+      }
+      if (excluded === selfDir) {
+        throw new ComposedSkillError(
+          `Consumer '${id}' excludeProviders names '${excluded}', its own derived self provider (registry ownDir) — ` +
+            `self is always excluded; remove the entry (${path})`,
+        );
+      }
     }
 
     // Two consumers resolving to the same target ownDir would fight over one output

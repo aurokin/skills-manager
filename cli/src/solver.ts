@@ -1,14 +1,18 @@
 // Read-graph solver: turns one skill's scoping into concrete placements.
-// - unscoped → shared dir + claude dir (+ hermes when enabled, add-only)
+// - unscoped → shared dir + the own dir of every enabled `unscopedOwnDir` agent
 // - deny → hard guarantee: no dir any denied agent reads OR maybeReads
-// - allow → exactly-these; each allowed agent gets a dir no denied agent reads,
-//   preferring its ownDir; otherwise the agent is reported unreachable
+// - allow → exactly-these ∩ enabled; each allowed agent gets a dir no denied agent
+//   reads, preferring its ownDir; otherwise the agent is reported unreachable.
+//   Allowed-but-disabled agents surface as reason-tagged unreachable entries ONLY
+//   in allow mode (explicit intent worth surfacing); deny/unscoped modes filter
+//   disabled agents silently — do not "fix" that into row sprawl.
 // Incidental readers (bleed) are recorded per placement. Owned by the placement team.
 
 import * as path from "node:path";
 import { GatingError } from "./errors";
 import { gatedExposureOf, gateHonored } from "./gated";
 import { enabledAgents, readersOf } from "./registry";
+import { dialectForDir } from "./render";
 import type {
   DesiredSkill,
   MachineConfig,
@@ -32,6 +36,8 @@ export interface SolvedPlacementLocal extends Placement {
 
 export interface SolveResult extends SolvedPlacement {
   placements: SolvedPlacementLocal[];
+  /** Allow-listed agents skipped because they are disabled on this machine. */
+  disabledSkipped?: string[];
 }
 
 /** Solve placements for one skill against the enabled agents and read graph. */
@@ -80,12 +86,20 @@ export function solvePlacements(
   }
 
   // Resolve each allowed agent to a usable dir (prefer ownDir), else unreachable.
+  // Allow mode is additionally intersected with machine enablement (one rule with
+  // deny mode and composed consumers): an allowed-but-disabled agent is skipped
+  // with a reason, never placed.
   const chosen: { agent: string; dir: string }[] = [];
   const unreachable: string[] = [];
+  const disabledSkipped: string[] = [];
   for (const agentId of allowedAgents) {
     const agent = registry.agents[agentId];
     if (!agent || agent.skillsSupport !== "supported") {
       unreachable.push(agentId);
+      continue;
+    }
+    if (allowMode && !enabled.includes(agentId)) {
+      disabledSkipped.push(agentId);
       continue;
     }
     const dir = candidateDirs(agent).find((d) => !forbiddenDirs.has(d));
@@ -115,7 +129,9 @@ export function solvePlacements(
     placements.push(makePlacement(registry, skill, rep, dir, placedAgents));
   }
 
-  return { skill: skill.name, placements, unreachable };
+  const result: SolveResult = { skill: skill.name, placements, unreachable };
+  if (disabledSkipped.length > 0) result.disabledSkipped = disabledSkipped;
+  return result;
 }
 
 /**
@@ -161,11 +177,18 @@ function solveGated(skill: DesiredSkill, registry: Registry, enabled: string[]):
   const permissive = new Set(skill.gating?.permissive ?? []);
   const chosen: { agent: string; dir: string }[] = [];
   const unreachable: string[] = [];
+  const disabledSkipped: string[] = [];
   const forcedShared: string[] = [];
   for (const agentId of candidates) {
     const agent = registry.agents[agentId];
     if (!agent || agent.skillsSupport !== "supported") {
       if (allowMode) unreachable.push(agentId);
+      continue;
+    }
+    // Allow ∩ enabled, matching the scoped solver (deny/unscoped candidates already
+    // come from the enabled set).
+    if (allowMode && !enabled.includes(agentId)) {
+      disabledSkipped.push(agentId);
       continue;
     }
     // No-gate agents get the skill only through an explicit permissive opt-in.
@@ -209,7 +232,9 @@ function solveGated(skill: DesiredSkill, registry: Registry, enabled: string[]):
     if (exposure.length > 0) placement.gatedExposure = exposure;
     return placement;
   });
-  return { skill: skill.name, placements, unreachable };
+  const result: SolveResult = { skill: skill.name, placements, unreachable };
+  if (disabledSkipped.length > 0) result.disabledSkipped = disabledSkipped;
+  return result;
 }
 
 /** Incidental readers of a placement's dir beyond the intended agent(s). */
@@ -247,7 +272,7 @@ function makePlacement(
   intended: string[],
 ): SolvedPlacementLocal {
   const targetPath = path.join(registry.directories[dir]!.path, skill.name);
-  const kind = renderKind(skill, dir);
+  const kind = renderKind(skill, dir, registry);
   const placement: SolvedPlacementLocal = {
     agent,
     dir,
@@ -260,22 +285,22 @@ function makePlacement(
   return placement;
 }
 
-/** rendered iff the chosen first-party dir has a matching agents/<dialect>.yaml override. */
-function renderKind(skill: DesiredSkill, dir: string): Placement["kind"] {
-  if (dir === "claude" && skill.overrides.claude) return "rendered";
-  if (dir === "copilot" && skill.overrides.copilot) return "rendered";
-  if (dir === "codex" && skill.overrides.codex) return "rendered";
-  return "symlink";
+/** rendered iff the chosen dir has a render channel AND a matching agents/<dialect>.yaml override. */
+function renderKind(skill: DesiredSkill, dir: string, registry: Registry): Placement["kind"] {
+  const dialect = dialectForDir(registry, dir);
+  return dialect && skill.overrides[dialect] ? "rendered" : "symlink";
 }
 
 /**
- * Unscoped: shared covers the shared-readers; claude, antigravity, and hermes do NOT
- * read the shared dir, so each needs its own-dir placement. These are enumerated
- * explicitly (rather than derived from "every non-shared reader") to preserve the
- * existing narrow contract — grok also skips shared but is deliberately reached only
- * through maybeReads, not an own-dir unscoped placement. antigravity's dialect is
- * `spec` (no per-agent frontmatter render), and agy follows a symlinked skill folder
- * in its own dir (probe 2026-07-15), so its placement is a symlink like the others.
+ * Unscoped: shared covers the shared-readers; every ENABLED agent flagged
+ * `unscopedOwnDir` in the registry (an agent that reads neither the shared nor the
+ * claude dir) gets an own-dir placement — kind from the render-channel derivation,
+ * add-only from the agent's registry flag. The shared placement is not an agent
+ * (`registry.agents["shared"]` is undefined), so it stays a hand-rolled literal.
+ * Unscoped placements are bleed-exempt by definition (an unscoped skill is intended
+ * for every reader), so no `bleed` field is computed here. A disabled unscopedOwnDir
+ * agent silently gets nothing — unscoped has no explicit target list to report
+ * against (the allow-mode `disabledSkipped` row has no analogue here by design).
  */
 function solveUnscoped(
   skill: DesiredSkill,
@@ -290,29 +315,19 @@ function solveUnscoped(
       path: path.join(registry.directories.shared!.path, name),
       kind: "symlink",
     },
-    {
-      agent: "claude-code",
-      dir: "claude",
-      path: path.join(registry.directories.claude!.path, name),
-      kind: skill.overrides.claude ? "rendered" : "symlink",
-    },
   ];
-  if (enabled.includes("antigravity")) {
-    placements.push({
-      agent: "antigravity",
-      dir: "antigravity",
-      path: path.join(registry.directories.antigravity!.path, name),
-      kind: "symlink",
-    });
-  }
-  if (enabled.includes("hermes")) {
-    placements.push({
-      agent: "hermes",
-      dir: "hermes",
-      path: path.join(registry.directories.hermes!.path, name),
-      kind: "symlink",
-      addOnly: true,
-    });
+  for (const [agentId, agent] of Object.entries(registry.agents)) {
+    if (!agent.unscopedOwnDir || !enabled.includes(agentId)) continue;
+    const dir = agent.ownDir;
+    if (dir === undefined || dir === "shared") continue; // registry-validated; guard
+    const placement: SolvedPlacementLocal = {
+      agent: agentId,
+      dir,
+      path: path.join(registry.directories[dir]!.path, name),
+      kind: renderKind(skill, dir, registry),
+    };
+    if (agent.addOnly) placement.addOnly = true;
+    placements.push(placement);
   }
   return { skill: name, placements, unreachable: [] };
 }

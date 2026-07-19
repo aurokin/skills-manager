@@ -207,17 +207,24 @@ export function readersOf(
   return out;
 }
 
-/** Default enabled set: every `supported` agent except hermes (hermes is opt-in). */
+/** Default enabled set: every `supported` agent not flagged `optIn` (e.g. hermes). */
 export function defaultEnabledAgents(reg: Registry): string[] {
   return Object.entries(reg.agents)
-    .filter(([id, a]) => a.skillsSupport === "supported" && id !== "hermes")
+    .filter(([, a]) => a.skillsSupport === "supported" && !a.optIn)
     .map(([id]) => id);
 }
 
-/** Enabled agents for a config: explicit `agents` if present, else the default set. */
+/**
+ * Enabled agents for a config: explicit `agents` is the exact set; otherwise the
+ * default set plus any `optInAgents` additions (both-set is rejected at config load).
+ */
 export function enabledAgents(config: MachineConfig, reg: Registry): string[] {
   if (config.agents !== undefined) return config.agents;
-  return defaultEnabledAgents(reg);
+  const enabled = defaultEnabledAgents(reg);
+  for (const id of config.optInAgents ?? []) {
+    if (!enabled.includes(id)) enabled.push(id);
+  }
+  return enabled;
 }
 
 /** Resolve a directory id to an absolute path (tilde expanded against env.home). */

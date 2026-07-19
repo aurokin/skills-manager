@@ -534,3 +534,88 @@ describe("doctor arms", () => {
     expect(leakFinding?.fixable).toBe(false);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// excludeProviders — per-consumer redundancy exclusion (phase-1 variant support)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { loadComposedSkill, type ComposedSkillInput } from "../src/composed/schema";
+
+/** Inline composed input (providers claude/codex/grok, consumers claude-code/codex). */
+function exclusionInput(excludeProviders: string[] | undefined): DesiredComposedSkill {
+  const providerText = (name: string, cli: string, model: string): string =>
+    `---\n${stringify({ name, cli, models: { [model]: { default: true } } })}---\nProvider ${name}. {{provider_clis}}\n`;
+  const input: ComposedSkillInput = {
+    name: "orchestrate",
+    source: { root: "private", visibility: "private", path: "/x/composed/orchestrate" },
+    path: "/x/composed/orchestrate/skill.yaml",
+    skillYaml: {
+      name: "orchestrate",
+      posture: "yolo",
+      consumers: {
+        "claude-code": {
+          description: "Delegate.",
+          ...(excludeProviders ? { excludeProviders } : {}),
+        },
+        codex: { description: "Delegate the other way." },
+      },
+      dimensions: [
+        {
+          key: "implementation",
+          candidates: [
+            { provider: "codex", model: "gpt-5.5" },
+            { provider: "grok", model: "grok-4.5" },
+          ],
+        },
+        { key: "judgment", candidates: [{ provider: "claude", model: "opus" }] },
+      ],
+    },
+    template: "Body {{provider_clis}}\n\n{{routing_table}}\n\n{{consumer_appendix}}\n",
+    providerFiles: {
+      claude: providerText("claude", "claude", "opus"),
+      codex: providerText("codex", "codex", "gpt-5.5"),
+      grok: providerText("grok", "grok", "grok-4.5"),
+    },
+    consumerFiles: {},
+    registry,
+  };
+  return loadComposedSkill(input).skill;
+}
+
+describe("excludeProviders render semantics", () => {
+  test("an excluded provider drops out of chains and references", () => {
+    const tree = renderComposedSkill(exclusionInput(["codex"]), "claude-code", registry);
+    const md = tree["SKILL.md"]!;
+    // implementation chain falls through to grok; codex never appears as a route.
+    expect(md).toContain("grok/grok-4.5");
+    expect(md).not.toContain("codex/gpt-5.5");
+    expect(Object.keys(tree).sort()).toEqual(["SKILL.md", "references/grok.md"]);
+  });
+
+  test("all chains empty renders the placeholder, no references, full provider_clis", () => {
+    const tree = renderComposedSkill(exclusionInput(["codex", "grok"]), "claude-code", registry);
+    const md = tree["SKILL.md"]!;
+    expect(md).toContain("No CLI routes for this consumer");
+    expect(md).not.toContain("| Dimension | When | Route |");
+    // No references ship, but the anti-recursion CLI list still names every declared CLI.
+    expect(Object.keys(tree)).toEqual(["SKILL.md"]);
+    expect(md).toContain("Body claude, codex, grok");
+  });
+
+  test("a consumer without exclusions is unaffected by another consumer's", () => {
+    const skill = exclusionInput(["codex", "grok"]);
+    const tree = renderComposedSkill(skill, "codex", registry);
+    const md = tree["SKILL.md"]!;
+    // codex's own render still self-excludes codex but keeps claude and grok routes.
+    expect(md).toContain("grok/grok-4.5");
+    expect(md).toContain("claude/opus");
+  });
+
+  test("excludeProviders changes the rendered tree hash", () => {
+    const base = exclusionInput(undefined);
+    const excluded = exclusionInput(["codex"]);
+    expect(composedTreeHash(base, "claude-code", registry)).not.toBe(
+      composedTreeHash(excluded, "claude-code", registry),
+    );
+  });
+});

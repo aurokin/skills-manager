@@ -8,7 +8,7 @@ import {
   normalizeConfig,
   repoRoot,
 } from "../src/machine-config";
-import { defaultEnabledAgents, loadRegistry } from "../src/registry";
+import { defaultEnabledAgents, enabledAgents, loadRegistry } from "../src/registry";
 import type { MachineConfig, Registry } from "../src/types";
 import { makeSandbox, realRegistryPath, writeMachineConfig, type Sandbox } from "./util";
 
@@ -31,14 +31,16 @@ describe("repoRoot", () => {
 });
 
 describe("defaultConfig", () => {
-  test("single public root at repo root, standard agents, empty allowlist", () => {
+  test("single public root at repo root, defaulted agents, empty allowlist", () => {
     const config = defaultConfig(reg());
     expect(config.roots).toHaveLength(1);
     expect(config.roots[0]!.name).toBe("public");
     expect(config.roots[0]!.visibility).toBe("public");
     expect(path.basename(config.roots[0]!.path)).toBe("skills-manager");
-    expect(config.agents).toEqual(defaultEnabledAgents(reg()));
-    expect(config.agents).not.toContain("hermes");
+    // Raw absence is preserved (defaulting lives in enabledAgents, not the loader).
+    expect(config.agents).toBeUndefined();
+    expect(enabledAgents(config, reg())).toEqual(defaultEnabledAgents(reg()));
+    expect(enabledAgents(config, reg())).not.toContain("hermes");
     expect(config.privateOriginAllowlist).toEqual([]);
   });
 });
@@ -48,7 +50,8 @@ describe("loadMachineConfig", () => {
     sandbox = makeSandbox();
     const config = loadMachineConfig(sandbox.env, reg());
     expect(config.roots[0]!.name).toBe("public");
-    expect(config.agents).toEqual(defaultEnabledAgents(reg()));
+    expect(config.agents).toBeUndefined();
+    expect(enabledAgents(config, reg())).toEqual(defaultEnabledAgents(reg()));
   });
 
   test("present file is normalized: tilde expanded, agents honored", () => {
@@ -79,7 +82,41 @@ describe("loadMachineConfig", () => {
       roots: [{ name: "public", path: "~/x", visibility: "public" }],
     });
     const config = loadMachineConfig(sandbox.env, reg());
-    expect(config.agents).toEqual(defaultEnabledAgents(reg()));
+    expect(config.agents).toBeUndefined();
+    expect(enabledAgents(config, reg())).toEqual(defaultEnabledAgents(reg()));
+  });
+
+  test("optInAgents adds to the default set without duplicating members", () => {
+    sandbox = makeSandbox();
+    writeMachineConfig(sandbox, {
+      version: 1,
+      roots: [{ name: "public", path: "~/x", visibility: "public" }],
+      optInAgents: ["hermes", "claude-code"],
+    });
+    const config = loadMachineConfig(sandbox.env, reg());
+    const enabled = enabledAgents(config, reg());
+    expect(enabled).toEqual([...defaultEnabledAgents(reg()), "hermes"]);
+  });
+
+  test("agents + optInAgents together is a config error", () => {
+    sandbox = makeSandbox();
+    writeMachineConfig(sandbox, {
+      version: 1,
+      roots: [{ name: "public", path: "~/x", visibility: "public" }],
+      agents: ["claude-code"],
+      optInAgents: ["hermes"],
+    });
+    expect(() => loadMachineConfig(sandbox!.env, reg())).toThrow(/mutually exclusive/);
+  });
+
+  test("agent lists naming unknown agents are a config error", () => {
+    sandbox = makeSandbox();
+    writeMachineConfig(sandbox, {
+      version: 1,
+      roots: [{ name: "public", path: "~/x", visibility: "public" }],
+      optInAgents: ["not-an-agent"],
+    });
+    expect(() => loadMachineConfig(sandbox!.env, reg())).toThrow(/unknown agent 'not-an-agent'/);
   });
 });
 

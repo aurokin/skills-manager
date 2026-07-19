@@ -308,7 +308,7 @@ export function hashDesiredState(
   // posture, consumers}); provider/dimension/template CONTENT edits are caught by
   // the apply-time render-hash re-check (like skills/agent-defs), so a plan is
   // refused when WHICH composed skills exist, their posture, or their consumer set
-  // (names + descriptions + selfProvider acks) changes.
+  // (names + descriptions + selfProvider acks + excludeProviders) changes.
   const canonicalComposed = [...composedSkills].sort(byNameAsc).map((c) => ({
     name: c.name,
     root: c.source.root,
@@ -321,6 +321,7 @@ export function hashDesiredState(
         name: id,
         description: c.consumers[id]!.description,
         selfProvider: c.consumers[id]!.selfProvider ?? null,
+        excludeProviders: c.consumers[id]!.excludeProviders ?? null,
       })),
   }));
   const payload = JSON.stringify({

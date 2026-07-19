@@ -103,3 +103,64 @@ describe("renderSkill", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// dialectForDir — registry-derived render channel (replaces the hardcoded maps)
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { RENDERER_DIALECTS, dialectForDir } from "../src/render";
+import type { Registry } from "../src/types";
+
+function channelRegistry(): Registry {
+  const agent = (dialect: "claude" | "spec", ownDir: string, firstParty?: boolean) => ({
+    skillsSupport: "supported" as const,
+    reads: [ownDir],
+    maybeReads: [],
+    ownDir,
+    dialect,
+    symlinks: "followed" as const,
+    ...(firstParty ? { firstParty: true } : {}),
+    evidence: "fixture",
+  });
+  return {
+    version: 1,
+    directories: {
+      claude: { path: "~/.claude/skills" },
+      variant: { path: "~/.variant/skills" },
+      clone: { path: "~/.clone/skills" },
+      spec: { path: "~/.spec/skills" },
+    },
+    agents: {
+      "claude-code": agent("claude", "claude", true),
+      "super-claude": agent("claude", "variant", true),
+      // claude-dialect but NOT firstParty: deliberate symlink-only.
+      clone: agent("claude", "clone"),
+      // firstParty but a spec dialect: no renderer exists for it.
+      speccy: { ...agent("spec", "spec", true) },
+    },
+  };
+}
+
+describe("dialectForDir derivation", () => {
+  test("firstParty + renderer dialect owns the channel (including a second claude-dialect dir)", () => {
+    const r = channelRegistry();
+    expect(dialectForDir(r, "claude")).toBe("claude");
+    expect(dialectForDir(r, "variant")).toBe("claude");
+  });
+
+  test("renderer dialect without firstParty is deliberate symlink-only", () => {
+    expect(dialectForDir(channelRegistry(), "clone")).toBeUndefined();
+  });
+
+  test("firstParty with a non-renderer dialect has no channel", () => {
+    expect(dialectForDir(channelRegistry(), "spec")).toBeUndefined();
+  });
+
+  test("an unowned dir (e.g. shared) has no channel", () => {
+    expect(dialectForDir(channelRegistry(), "shared")).toBeUndefined();
+  });
+
+  test("the renderer set is exactly claude/copilot/codex", () => {
+    expect([...RENDERER_DIALECTS].sort()).toEqual(["claude", "codex", "copilot"]);
+  });
+});

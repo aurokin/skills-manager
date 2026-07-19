@@ -10,11 +10,11 @@ import { loadContext, registryPath } from "./context";
 import { type SkmEnv, expandTilde } from "./env";
 import { gatedExposureOf, gatedExposureRemedy, gateHonored } from "./gated";
 import { loadMachineConfig } from "./machine-config";
-import { computeDesiredPlacements, dialectForDir } from "./placements";
+import { computeDesiredPlacements } from "./placements";
 import { privacyViolation } from "./privacy";
 import { dirPath, loadRegistry, readersOf } from "./registry";
 import { renderComposedSkill } from "./composed/render";
-import { hashContent, renderSkill, treeHashOf } from "./render";
+import { dialectForDir, hashContent, renderSkill, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
 import { artifactKey, loadState, saveState, upsertPlacement } from "./state";
 import { type ScanEntry, scanEntry, scanRegistryDirs } from "./scan";
@@ -663,7 +663,7 @@ function applyFixes(
         entry.kind === "dir" &&
         entry.sha256OfSkillMd !== sp.hash
       ) {
-        const dialect = dialectForDir(dp.placement.dir);
+        const dialect = dialectForDir(registry, dp.placement.dir);
         if (!dialect || !dp.desiredSkill) continue;
         removeExisting(abs);
         const skillDef: DesiredSkill = { name: artifact.name, source: dp.source, overrides: dp.desiredSkill.overrides };

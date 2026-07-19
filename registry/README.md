@@ -12,6 +12,12 @@ refresh evidence when an agent changes its discovery paths or invocation model.
   reported visibility.
 - `ownDir`: target used for scoped placement.
 - `firstParty`, `dialect`, `symlinks`, `addOnly`: rendering and placement policy.
+  `firstParty` means "has a first-party per-dialect frontmatter render channel";
+  a renderer dialect without it is deliberate symlink-only (ADR 0016).
+- `optIn`: excluded from the default enabled set; machines enable via config
+  `agents`/`optInAgents` (hermes, agent variants).
+- `unscopedOwnDir`: when enabled, the agent receives unscoped skills in its own
+  dir (agents that read neither the shared nor the claude dir; ADR 0016).
 - `agentDefDir`, `agentDefDialect`, `agentDefVia`: agent-definition delivery.
 - `skillInvocation`: user invocation, model-invocation gate, probe version/date,
   and evidence used by gated placement and drift warnings.

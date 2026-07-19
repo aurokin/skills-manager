@@ -18,7 +18,7 @@ import * as path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { GatingError } from "./errors";
 import { readersOf } from "./registry";
-import { plainToDocument, renderedSkillMd } from "./render";
+import { dialectForDir, plainToDocument, renderedSkillMd } from "./render";
 import { emitYamlPyyaml } from "./render/emit-yaml-pyyaml";
 import type { DesiredSkill, Registry, SkillGate } from "./types";
 
@@ -66,15 +66,6 @@ export function gatedExposureRemedy(registry: Registry, exposed: string[]): stri
   return [...switches, "rely on the skill's prose gate", "or add the agent(s) to gating.permissive to acknowledge the exposure"].join("; ");
 }
 
-// First-party dirs whose SKILL.md gets a per-agent frontmatter merge when the skill
-// ships the matching agents/<dialect>.yaml. Mirrors solver.ts's renderKind — a gated
-// SKILL.md is otherwise copied verbatim (disable-model-invocation preserved as-is).
-const FIRST_PARTY_DIR_DIALECT: Record<string, "claude" | "copilot" | "codex"> = {
-  claude: "claude",
-  copilot: "copilot",
-  codex: "codex",
-};
-
 /**
  * Render one gated placement's full tree in memory for agent `agentId` into dir `dir`
  * (its ownDir). Copies the source skill dir, overlays the per-agent SKILL.md render
@@ -87,7 +78,10 @@ export function renderGatedTree(skill: DesiredSkill, agentId: string, dir: strin
     tree[rel] = fs.readFileSync(path.join(skill.source.path, rel));
   }
 
-  const dialect = FIRST_PARTY_DIR_DIALECT[dir];
+  // Same render-channel derivation as native placements (render.ts dialectForDir) —
+  // a gated SKILL.md without a channel/override is copied verbatim
+  // (disable-model-invocation preserved as-is).
+  const dialect = dialectForDir(registry, dir);
   const overridePath = dialect ? skill.overrides[dialect] : undefined;
   if (dialect && overridePath) {
     // Same per-agent frontmatter merge a rendered native placement gets — but the

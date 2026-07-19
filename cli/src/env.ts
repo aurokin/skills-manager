@@ -61,6 +61,8 @@ export function realEnv(): SkmEnv {
 /** Registry agent id → CLI binary name for the gate-version probe (gate-honoring agents). */
 const AGENT_CLI: Record<string, string> = {
   "claude-code": "claude",
+  // CLAUDE_CONFIG_DIR variant of the claude binary — same executable, same probe.
+  "super-claude": "claude",
   codex: "codex",
   "github-copilot": "copilot",
   cursor: "cursor-agent",

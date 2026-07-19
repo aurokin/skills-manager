@@ -472,3 +472,65 @@ describe("shared provider pool", () => {
     expect(warnings).toEqual([]);
   });
 });
+
+describe("excludeProviders (per-consumer exclusion)", () => {
+  test("valid entries parse onto the consumer", () => {
+    const { skill } = loadComposedSkill(
+      withYaml((y) => {
+        y.consumers["claude-code"].excludeProviders = ["codex", "grok"];
+      }),
+    );
+    expect(skill.consumers["claude-code"]!.excludeProviders).toEqual(["codex", "grok"]);
+    expect(skill.consumers.codex!.excludeProviders).toBeUndefined();
+  });
+
+  test("an id that is not a declared provider is a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = ["droid"];
+        }),
+      ),
+    ).toThrow(/excludeProviders names 'droid', which is not a declared provider/);
+  });
+
+  test("naming the consumer's derived self provider is a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = ["claude"];
+        }),
+      ),
+    ).toThrow(/its own derived self provider/);
+  });
+
+  test("duplicate ids are a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = ["codex", "codex"];
+        }),
+      ),
+    ).toThrow(/lists provider 'codex' twice/);
+  });
+
+  test("an empty list is a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = [];
+        }),
+      ),
+    ).toThrow(/non-empty list/);
+  });
+
+  test("non-string entries are a load error", () => {
+    expect(() =>
+      loadComposedSkill(
+        withYaml((y) => {
+          y.consumers["claude-code"].excludeProviders = [42];
+        }),
+      ),
+    ).toThrow(/non-empty strings/);
+  });
+});

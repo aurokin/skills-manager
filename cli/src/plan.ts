@@ -10,9 +10,9 @@ import { agentDefFileHash, derivedSkillHash } from "./agentdef/artifact";
 import { loadContext } from "./context";
 import { gateHonored, gatedExposureRemedy } from "./gated";
 import { type SkmEnv, expandTilde } from "./env";
-import { computeDesiredPlacements, dialectForDir } from "./placements";
+import { computeDesiredPlacements } from "./placements";
 import { privacyViolation } from "./privacy";
-import { hashContent, renderedHash, treeHashOf } from "./render";
+import { dialectForDir, hashContent, renderedHash, treeHashOf } from "./render";
 import { classifyTarget, scanEntry } from "./scan";
 import { artifactKey, findOwner } from "./state";
 import { resolveTpromptCollisions } from "./tprompt/channel";
@@ -161,7 +161,7 @@ export function buildPlan(
     } else if (p.artifactType === "agent-def") {
       diffAgentDefFile(env, dp, state, actions, warnings, foreign);
     } else if (p.kind === "rendered") {
-      diffRendered(env, dp, state, actions, warnings, foreign);
+      diffRendered(env, registry, dp, state, actions, warnings, foreign);
     } else {
       diffSymlink(env, dp, state, actions, foreign);
     }
@@ -347,6 +347,7 @@ function diffSymlink(
 
 function diffRendered(
   env: SkmEnv,
+  registry: Registry,
   dp: DesiredPlacement,
   state: StateFile,
   actions: PlannedAction[],
@@ -359,7 +360,7 @@ function diffRendered(
     // Derived skill: render-only SKILL.md from the agent definition (no override dialect).
     expectedHash = derivedSkillHash(dp.source.path, p.agent === "hermes");
   } else {
-    const dialect = dialectForDir(p.dir);
+    const dialect = dialectForDir(registry, p.dir);
     if (!dialect) {
       // Should not happen (only first-party dirs render); fall back to symlink diff.
       diffSymlink(env, dp, state, actions, foreign);
@@ -713,7 +714,9 @@ function renderPlanHuman(plan: Plan): string {
     }
   }
   for (const w of plan.warnings) lines.push(`  ! ${w.kind}: ${w.message}`);
-  for (const u of plan.unreachable) lines.push(`  · unreachable: ${u.skill} → ${u.agent}`);
+  for (const u of plan.unreachable) {
+    lines.push(`  · unreachable: ${u.skill} → ${u.agent}${u.reason ? ` (${u.reason})` : ""}`);
+  }
   for (const b of plan.bleed) lines.push(`  · bleed: ${b.skill} @ ${b.path} visible to ${b.readers.join(", ")}`);
   for (const f of plan.foreign) lines.push(`  × foreign: ${f.path} (${f.detail})`);
   for (const s of plan.unsafe) lines.push(`  ⚠ unsafe: ${s.skill} → ${s.path} (${s.detail})`);

@@ -396,3 +396,17 @@ describe("dirPath", () => {
     }
   });
 });
+
+describe("optIn agents and the default enabled set", () => {
+  test("real registry: hermes is optIn and excluded; the default set is unchanged", () => {
+    const r = loadRegistry(realRegistryPath());
+    expect(r.agents.hermes!.optIn).toBe(true);
+    const defaults = defaultEnabledAgents(r);
+    expect(defaults).not.toContain("hermes");
+    // Every non-optIn supported agent is present (the pre-optIn contract, preserved).
+    const expected = Object.entries(r.agents)
+      .filter(([, a]) => a.skillsSupport === "supported" && !a.optIn)
+      .map(([id]) => id);
+    expect(defaults).toEqual(expected);
+  });
+});

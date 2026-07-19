@@ -259,8 +259,16 @@ skills/drive-codex/
 }
 ```
 
-This is a minimal config. Omitting `agents` uses all supported agents except
-the opt-in Hermes target; omitting `privateOriginAllowlist` uses an empty list.
+This is a minimal config. Omitting `agents` uses every supported agent not
+flagged `optIn` in the registry (e.g. hermes); `optInAgents` adds named opt-in
+agents to that default set (mutually exclusive with `agents`, which is an exact
+set); omitting `privateOriginAllowlist` uses an empty list. Allow lists, gated
+placement, and agent-def fan-out all intersect with the enabled set (ADR 0016),
+so shared overlays naming a disabled agent are inert on that host. Agent
+*variants* (a second config-home instance of an existing program, e.g. a
+`CLAUDE_CONFIG_DIR` profile) are plain registry entries registered per the
+README's "Registering an Agent Variant" recipe — render channels, unscoped
+own-dir placement, and enablement all derive from registry data.
 
 A registered root that is missing on disk **aborts desired-state verbs** such
 as `plan`, `apply`, and `status` (never treated as "delete its skills").

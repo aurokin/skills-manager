@@ -44,23 +44,15 @@ export interface DesiredPlacement {
   placement: Placement;
 }
 
+/** Reason string for an allow-listed agent skipped because the machine disables it. */
+export const DISABLED_REASON = "agent disabled on this machine";
+
 export interface SolvedDesired {
   placements: DesiredPlacement[];
   unreachable: UnreachableEntry[];
   bleed: BleedEntry[];
   /** tprompt export-channel report (ADR 0008): availability + resolved namespace. */
   tprompt: TpromptReport;
-}
-
-/** First-party dir id → rendering dialect (only these dirs ever render). */
-const DIR_DIALECT: Record<string, Dialect> = {
-  claude: "claude",
-  copilot: "copilot",
-  codex: "codex",
-};
-
-export function dialectForDir(dir: string): Dialect | undefined {
-  return DIR_DIALECT[dir];
 }
 
 /**
@@ -117,6 +109,9 @@ export function computeDesiredPlacements(
     for (const agent of solved.unreachable) {
       unreachable.push({ skill: skill.name, agent });
     }
+    for (const agent of solved.disabledSkipped ?? []) {
+      unreachable.push({ skill: skill.name, agent, reason: DISABLED_REASON });
+    }
   }
 
   const enabled = enabledAgents(config, registry);
@@ -168,6 +163,9 @@ function appendDerivedSkill(
   // explicitly opted in (harness.include → allow contains "hermes"). Both the
   // per-def opt-in AND machine enablement are required.
   const hermesOptIn = def.scoping?.allow?.includes("hermes") ?? false;
+  for (const agent of solved.disabledSkipped ?? []) {
+    unreachable.push({ skill: name, agent, reason: DISABLED_REASON });
+  }
   for (const p of solved.placements) {
     if (p.agent === "hermes" && !hermesOptIn) continue;
     const abs = expandTilde(env, p.path);
@@ -213,6 +211,12 @@ function appendAgentDefFiles(
     const dialect = agent?.agentDefDialect;
     if (!agent || agent.agentDefSupport !== "supported" || !agent.agentDefDir || !dialect) {
       if (targets.explicit) unreachable.push({ skill: def.name, agent: agentId });
+      continue;
+    }
+    // Allow ∩ enabled, matching the skill solvers: an explicitly-listed harness the
+    // machine disables is skipped with a reason, never placed.
+    if (targets.explicit && !enabled.includes(agentId)) {
+      unreachable.push({ skill: def.name, agent: agentId, reason: DISABLED_REASON });
       continue;
     }
     const abs = agentDefFilePath(env, agentId, agent, def.name, dialect);

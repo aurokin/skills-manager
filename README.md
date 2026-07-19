@@ -382,6 +382,34 @@ Rules:
 - `customFamilies` cannot reuse a curated family name
 - duplicate specs are deduped with curated entries first
 
+## Registering an Agent Variant
+
+A variant is a second instance of an existing agent program with its own config
+home (e.g. a `CLAUDE_CONFIG_DIR` profile of the claude binary). Since ADR 0016
+this is pure data — no engine code changes:
+
+1. **Probe first** (registry entries are evidence-backed): a canary skill in the
+   variant's skills dir must load; dummies present only in `~/.claude/skills`
+   and `~/.agents/skills` must NOT appear in the variant (and vice versa); the
+   frontmatter gate and agent-def loading re-probed under the relocated home.
+   Remove every probe dummy afterwards.
+2. **Registry entry** (`registry/agents.json`): a new directory id for its
+   skills dir plus an agent entry — same `dialect` as the base program,
+   `firstParty: true` (it renders per-dialect frontmatter), `optIn: true` (a
+   variant's existence is per-machine; it must not auto-enable fleet-wide),
+   `unscopedOwnDir: true` if it should receive unscoped skills, its own
+   `agentDefDir`, and probe-backed evidence strings. Keep the entry generic:
+   nothing machine- or proxy-specific, no model catalogs.
+3. **Machine opt-in** (`~/.config/skills-manager/config.json`): add the variant
+   to `optInAgents` on the hosts that run it. Allow lists, gated placement, and
+   agent-def fan-out all intersect with enablement, so shared overlays naming
+   the variant are inert on other hosts.
+4. **Scoping**: trim per-skill with `deny` (note: existing denies naming the
+   base agent likely need the variant added too), and add it as a composed
+   consumer where wanted — `excludeProviders` expresses providers the variant
+   routes natively (their chains drop; the consumer file carries the
+   replacement guidance).
+
 ## Local Skills
 
 Local repo-managed skills live in `skills/<name>/SKILL.md`.

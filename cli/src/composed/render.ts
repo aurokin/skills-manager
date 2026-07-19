@@ -78,10 +78,13 @@ export function renderComposedSkill(
   // Self-exclusion is DERIVED from registry ownDir by design (ADR 0010, review
   // ruling R4): skill.yaml has no self-provider override — `selfProvider` only
   // accepts "none" and is a load-time acknowledgment, validated coherent with
-  // this derivation (schema.ts), never a routing input.
+  // this derivation (schema.ts), never a routing input. `excludeProviders` is the
+  // additive exclusion axis (a consumer that routes a provider's models natively);
+  // its ids are load-validated as declared, non-self providers.
   const selfId = registry.agents[consumer]?.ownDir;
+  const excluded = new Set(skill.consumers[consumer]?.excludeProviders ?? []);
   const declared = Object.keys(skill.providers);
-  const enabled = new Set(declared.filter((p) => p !== selfId));
+  const enabled = new Set(declared.filter((p) => p !== selfId && !excluded.has(p)));
   // ALL declared providers' CLIs, sorted — regardless of which references ship (the
   // anti-recursion line must inoculate against every provider).
   const providerClis = Object.values(skill.providers)
@@ -163,6 +166,15 @@ function buildRoutingTable(
     const when = tableCell(dim.when ?? "");
     const reference = `[${primary.provider}](references/${primary.provider}.md)`;
     rows.push(`| ${dimension} | ${when} | ${route} | ${tableCell(notes.join("; "))} | ${reference} |`);
+  }
+  // Every chain empty (e.g. a consumer whose excludeProviders covers all declared
+  // providers): a bare table header would dangle, so emit a well-formed placeholder
+  // pointing at the consumer sections instead.
+  if (rows.length === 0) {
+    return {
+      table: "No CLI routes for this consumer — see the consumer-specific guidance below.",
+      referenced,
+    };
   }
   const table = [
     TABLE_CAPTION,

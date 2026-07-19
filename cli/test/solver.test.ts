@@ -178,3 +178,156 @@ describe("bleedFor", () => {
     expect(bleedFor(reg(), placement, ["claude-code"])).toEqual(["cursor", "opencode"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase-1 variant support: allow ∩ enabled, data-driven unscoped own-dir
+// placement, and the registry-derived render channel (fixture registries).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Minimal fixture registry: claude-code plus a claude-dialect config-home variant. */
+function variantRegistry(): Registry {
+  return {
+    version: 1,
+    directories: {
+      shared: { path: "~/.agents/skills" },
+      claude: { path: "~/.claude/skills" },
+      variant: { path: "~/.variant/skills" },
+      hermes: { path: "~/.hermes/skills" },
+    },
+    agents: {
+      "claude-code": {
+        skillsSupport: "supported",
+        reads: ["claude"],
+        maybeReads: [],
+        ownDir: "claude",
+        dialect: "claude",
+        symlinks: "followed",
+        firstParty: true,
+        unscopedOwnDir: true,
+        evidence: "fixture",
+      },
+      "super-claude": {
+        skillsSupport: "supported",
+        reads: ["variant"],
+        maybeReads: [],
+        ownDir: "variant",
+        dialect: "claude",
+        symlinks: "followed",
+        firstParty: true,
+        optIn: true,
+        unscopedOwnDir: true,
+        evidence: "fixture",
+      },
+      hermes: {
+        skillsSupport: "supported",
+        reads: ["hermes"],
+        maybeReads: [],
+        ownDir: "hermes",
+        dialect: "spec",
+        symlinks: "followed",
+        addOnly: true,
+        optIn: true,
+        unscopedOwnDir: true,
+        evidence: "fixture",
+      },
+    },
+  };
+}
+
+describe("allow ∩ enabled (disabled agents are skipped, not placed)", () => {
+  test("an allow-listed disabled agent is skipped with a reason, not placed or unreachable", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code"] };
+    const r = solvePlacements(
+      desired("drive", { scoping: { allow: ["claude-code", "super-claude"] } }),
+      config,
+      variantRegistry(),
+    );
+    expect(r.placements.map((p) => p.dir)).toEqual(["claude"]);
+    expect(r.unreachable).toEqual([]);
+    expect(r.disabledSkipped).toEqual(["super-claude"]);
+  });
+
+  test("an enabled allow-listed variant is placed in its own dir", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code", "super-claude"] };
+    const r = solvePlacements(
+      desired("drive", { scoping: { allow: ["super-claude"] } }),
+      config,
+      variantRegistry(),
+    );
+    expect(r.placements.map((p) => p.dir)).toEqual(["variant"]);
+    expect(r.disabledSkipped).toBeUndefined();
+  });
+
+  test("gated allow mode also intersects with enablement", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code"] };
+    const registry = variantRegistry();
+    registry.agents["claude-code"]!.skillInvocation = {
+      userInvocation: "slash",
+      gate: "frontmatter",
+      evidence: "fixture",
+      probedVersion: "1.0.0",
+      probedOn: "2026-07-01",
+    };
+    registry.agents["super-claude"]!.skillInvocation = registry.agents["claude-code"]!.skillInvocation;
+    const skill: DesiredSkill = { ...desired("gated-one", { scoping: { allow: ["claude-code", "super-claude"] } }), gated: true };
+    const r = solvePlacements(skill, config, registry);
+    expect(r.placements.map((p) => p.dir)).toEqual(["claude"]);
+    expect(r.disabledSkipped).toEqual(["super-claude"]);
+  });
+
+  test("deny mode keeps intersecting silently (no disabledSkipped rows)", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code"] };
+    const r = solvePlacements(
+      desired("drive", { scoping: { deny: ["claude-code"] } }),
+      config,
+      variantRegistry(),
+    );
+    expect(r.placements).toEqual([]);
+    expect(r.disabledSkipped).toBeUndefined();
+  });
+});
+
+describe("solveUnscoped — data-driven own-dir placements", () => {
+  test("every enabled unscopedOwnDir agent gets an own-dir placement; disabled ones do not", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code", "super-claude"] };
+    const r = solvePlacements(desired("alpha"), config, variantRegistry());
+    expect(r.placements.map((p) => p.dir)).toEqual(["shared", "claude", "variant"]);
+  });
+
+  test("a disabled claude-code no longer receives unscoped placements", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["super-claude"] };
+    const r = solvePlacements(desired("alpha"), config, variantRegistry());
+    expect(r.placements.map((p) => p.dir)).toEqual(["shared", "variant"]);
+  });
+
+  test("a claude override renders in EVERY enabled claude-dialect firstParty dir", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code", "super-claude"] };
+    const r = solvePlacements(
+      desired("alpha", { overrides: { claude: "/x/agents/claude.yaml" } }),
+      config,
+      variantRegistry(),
+    );
+    const kinds = Object.fromEntries(r.placements.map((p) => [p.dir, p.kind]));
+    expect(kinds).toEqual({ shared: "symlink", claude: "rendered", variant: "rendered" });
+  });
+
+  test("add-only flows from the agent's registry flag", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code", "hermes"] };
+    const r = solvePlacements(desired("alpha"), config, variantRegistry());
+    const hermes = r.placements.find((p) => p.dir === "hermes");
+    expect(hermes!.addOnly).toBe(true);
+    expect(r.placements.find((p) => p.dir === "claude")!.addOnly).toBeUndefined();
+  });
+
+  test("unscoped placements stay bleed-exempt (no bleed fields at all)", () => {
+    const config: MachineConfig = { version: 1, roots: [], agents: ["claude-code", "super-claude", "hermes"] };
+    const r = solvePlacements(desired("alpha"), config, variantRegistry());
+    expect(r.placements.every((p) => p.bleed === undefined)).toBe(true);
+  });
+
+  test("real registry: unchanged default placement set (behavior guard)", () => {
+    const r = solvePlacements(desired("alpha"), defaultConfig, reg());
+    expect(r.placements.map((p) => p.dir).sort()).toEqual(["antigravity", "claude", "shared"]);
+    expect(r.placements.every((p) => p.bleed === undefined)).toBe(true);
+  });
+});
