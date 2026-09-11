@@ -22,15 +22,23 @@ describe("repository local skills", () => {
     });
   });
 
-  test("unslop remains model-invocable", () => {
-    const frontmatter = localSkillFrontmatter("unslop");
-    expect(frontmatter.name).toBe("unslop");
-    expect(frontmatter["disable-model-invocation"]).not.toBe(true);
+  test("unslop remains user-invoked-only", () => {
+    expect(localSkillFrontmatter("unslop")).toMatchObject({
+      name: "unslop",
+      "disable-model-invocation": true,
+    });
   });
 
   test("humanizer remains user-invoked-only", () => {
     expect(localSkillFrontmatter("humanizer")).toMatchObject({
       name: "humanizer",
+      "disable-model-invocation": true,
+    });
+  });
+
+  test("ponytail remains user-invoked-only", () => {
+    expect(localSkillFrontmatter("ponytail")).toMatchObject({
+      name: "ponytail",
       "disable-model-invocation": true,
     });
   });
