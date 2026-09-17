@@ -162,8 +162,8 @@ describe("companion (agents/openai.yaml) emission", () => {
       gated: true,
     };
     const tree = renderGatedTree(skill, "codex", "codex", reg());
-    const golden = fs.readFileSync(`${goldensDir}/openai-companion.golden`, "utf8");
-    expect(tree["agents/openai.yaml"]!.toString("utf8")).toBe(golden);
+    const golden = fs.readFileSync(`${goldensDir}/openai-companion.golden`, "utf8").replaceAll("\r\n", "\n");
+    expect(tree[path.join("agents", "openai.yaml")]!.toString("utf8")).toBe(golden);
     expect(tree["SKILL.md"]!.toString("utf8")).toContain("disable-model-invocation: true");
   });
 
@@ -178,7 +178,7 @@ describe("companion (agents/openai.yaml) emission", () => {
       gated: true,
     };
     const tree = renderGatedTree(skill, "claude-code", "claude", reg());
-    expect(tree["agents/openai.yaml"]).toBeUndefined();
+    expect(tree[path.join("agents", "openai.yaml")]).toBeUndefined();
     expect(Object.keys(tree)).toEqual(["SKILL.md"]);
   });
 
@@ -196,8 +196,8 @@ describe("companion (agents/openai.yaml) emission", () => {
       gated: true,
     };
     const tree = renderGatedTree(skill, "codex", "codex", reg());
-    const golden = fs.readFileSync(`${goldensDir}/openai-companion-merged.golden`, "utf8");
-    expect(tree["agents/openai.yaml"]!.toString("utf8")).toBe(golden);
+    const golden = fs.readFileSync(`${goldensDir}/openai-companion-merged.golden`, "utf8").replaceAll("\r\n", "\n");
+    expect(tree[path.join("agents", "openai.yaml")]!.toString("utf8")).toBe(golden);
   });
 
   test("frontmatter override that omits the flag keeps disable-model-invocation in rendered bytes", () => {
@@ -311,7 +311,9 @@ describe("tree-hash content binding", () => {
     };
     const target = path.join(sandbox.base, "out");
     writeGatedTree(renderGatedTree(skill, "codex", "codex", reg()), target, src);
-    expect(fs.statSync(path.join(target, "scripts", "run.sh")).mode & 0o111).not.toBe(0);
+    if (process.platform !== "win32") {
+      expect(fs.statSync(path.join(target, "scripts", "run.sh")).mode & 0o111).not.toBe(0);
+    }
     // The generated companion has no source counterpart; default mode, not executable.
     expect(fs.statSync(path.join(target, "agents", "openai.yaml")).mode & 0o111).toBe(0);
   });

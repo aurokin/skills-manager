@@ -22,7 +22,7 @@ import { dialectForDir, plainToDocument, renderedSkillMd } from "./render";
 import { emitYamlPyyaml } from "./render/emit-yaml-pyyaml";
 import type { DesiredSkill, Registry, SkillGate } from "./types";
 
-/** Relative path (posix, `/`-joined) → file bytes for one rendered gated tree. */
+/** Host-native relative path → file bytes for one rendered gated tree. */
 export type GatedTree = Record<string, Buffer>;
 
 /** True for a gate skm can actually enforce (not none/unknown/absent). */
@@ -99,7 +99,8 @@ export function renderGatedTree(skill: DesiredSkill, agentId: string, dir: strin
   // vendor companion slots in as a new case, not a schema change (ADR 0011).
   const gate = registry.agents[agentId]?.skillInvocation?.gate;
   if (gate === "companion:agents/openai.yaml") {
-    tree["agents/openai.yaml"] = Buffer.from(renderOpenaiCompanion(skill.name, tree["agents/openai.yaml"]), "utf8");
+    const companionPath = path.join("agents", "openai.yaml");
+    tree[companionPath] = Buffer.from(renderOpenaiCompanion(skill.name, tree[companionPath]), "utf8");
   }
   return tree;
 }
