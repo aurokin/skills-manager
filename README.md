@@ -423,6 +423,8 @@ Current local skills:
 - `bro` — gated (`disable-model-invocation: true`); restates the previous
   response in plain language. Imported from Lauren Tan's
   [PStack](https://github.com/cursor/plugins/tree/main/pstack/skills/bro)
+- `handoff` — gated (`disable-model-invocation: true`); writes session state to
+  a Markdown file outside the checkout so another session or agent can continue
 - `html-artifact` — creates self-contained HTML documents for plans, reports,
   comparisons, and UI mock variants; adapted from `html-communication` by
   [Theo Browne](https://www.youtube.com/@t3dotgg)
