@@ -228,15 +228,27 @@ export async function runUpstream(env: SkmEnv, opts: VerbOptions): Promise<VerbO
     lines.push("  Skipping stale-skill removal (Hermes-only mode; Hermes installs are add-only).");
   } else {
     for (const name of plan.preservedInstalled) lines.push(`  Preserving manual skill: ${name}`);
-    for (const name of plan.removals) {
-      lines.push(`  Removing: ${name}`);
+    const runRemoval = (args: string[]): void => {
       try {
-        execFileSync(skillsBin, removalToSkillsArgs(name, nonHermesAgents), {
-          stdio: ["inherit", 2, "inherit"],
-        });
+        execFileSync(skillsBin, args, { stdio: ["inherit", 2, "inherit"] });
       } catch {
         // bash: `|| true` — a failed single removal never aborts the sync.
       }
+    };
+    const canonicalDir = path.join(env.home, ".agents", "skills");
+    // The skills CLI resolves Hermes' dir from $HERMES_HOME; check the dir it would delete from.
+    const hermesSkillsDir = path.join(process.env.HERMES_HOME?.trim() || path.join(env.home, ".hermes"), "skills");
+    for (const name of plan.removals) {
+      lines.push(`  Removing: ${name}`);
+      runRemoval(removalToSkillsArgs(name, nonHermesAgents));
+      // A narrowed `-a` removal keeps the canonical dir and its lock entry while any
+      // detected agent outside `-a` still resolves the name (a universal agent's
+      // install path IS the canonical dir), and `skills update` below would then
+      // re-place it everywhere. When Hermes holds nothing under this name, an
+      // all-agent removal cannot touch Hermes and clears the canonical dir + lock.
+      const lingering = fs.lstatSync(path.join(canonicalDir, name), { throwIfNoEntry: false });
+      const hermesHolds = fs.lstatSync(path.join(hermesSkillsDir, name), { throwIfNoEntry: false });
+      if (lingering && !hermesHolds) runRemoval(["remove", "-g", name, "-y"]);
       removed.push(name);
     }
     lines.push(removed.length === 0 ? "  No stale skills to remove." : `  Removed ${removed.length} skill(s).`);

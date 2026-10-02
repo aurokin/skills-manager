@@ -161,7 +161,10 @@ Hermes behavior is intentionally different:
 - `~/.hermes/skills` is treated as **add-only**. Stale-skill removal is scoped
   with `-a` to non-Hermes agents so the CLI never removes a Hermes entry on
   our behalf. Hermes packages and creates its own skills in that directory,
-  and we don't manage what we didn't install.
+  and we don't manage what we didn't install. If the narrowed removal leaves
+  `~/.agents/skills/<name>` behind (another detected agent still resolves it)
+  and Hermes has no entry under that name, sync follows with an all-agent
+  `skills remove` so the canonical dir and lock entry go too.
 - We do clean up our own dangling symlinks. After a stale removal, any
   `~/.hermes/skills/<name>` symlink whose target resolves into `skills/` or
   `~/.agents/skills/` is removed. Real directories and symlinks pointing

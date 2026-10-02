@@ -18,7 +18,7 @@ import {
   sweepHermesBrokenSymlinks,
 } from "../src/upstream/sync";
 import type { LocalSkillsConfig } from "../src/deploy/local-config";
-import { classifyInstalledGlobalNames } from "../src/upstream/verb";
+import { classifyInstalledGlobalNames, runUpstream } from "../src/upstream/verb";
 
 let base: string;
 beforeEach(() => {
@@ -164,6 +164,101 @@ describe("installed global discovery", () => {
       nonHermesAgents: ["codex"],
     });
     expect(plan).toMatchObject({ removals: ["upstream-real"], addBatches: [] });
+  });
+});
+
+describe("stale removal with a detected agent outside -a", () => {
+  // Fake `skills` emulating real CLI 1.5.22 on a host with a detected universal agent
+  // outside `-a` (e.g. cursor): a narrowed global remove unlinks the targeted agents but
+  // keeps the canonical dir (and its lock entry); an all-agent remove deletes the name
+  // everywhere, Hermes included; `update` re-places every surviving canonical skill.
+  // Paths are baked in: Bun children inherit the ORIGINAL environ, not process.env edits.
+  const shimScript = (home: string, log: string): string => `#!/usr/bin/env bash
+SHIM_HOME=${JSON.stringify(home)}
+SHIM_LOG=${JSON.stringify(log)}
+printf '%s\\n' "$*" >> "$SHIM_LOG"
+case "$1" in
+  list) printf '[{"name":"stale","path":"%s"}]' "$SHIM_HOME/.agents/skills/stale" ;;
+  remove)
+    rm -rf "$SHIM_HOME/.claude/skills/$3"
+    if [ "$4" != "-a" ]; then rm -rf "$SHIM_HOME/.agents/skills/$3" "$SHIM_HOME/.hermes/skills/$3"; fi ;;
+  update)
+    if [ -d "$SHIM_HOME/.agents/skills/stale" ]; then ln -s ../../.agents/skills/stale "$SHIM_HOME/.claude/skills/stale"; fi ;;
+esac
+`;
+
+  async function sync(home: string): Promise<{ argv: string[]; removed: unknown }> {
+    const root = path.join(base, "root");
+    fs.mkdirSync(path.join(root, "catalog", "families"), { recursive: true });
+    fs.writeFileSync(path.join(root, "catalog", "global-specs.txt"), "");
+    const xdgConfigHome = path.join(base, "xdg-config");
+    fs.mkdirSync(path.join(xdgConfigHome, "skills-manager"), { recursive: true });
+    fs.writeFileSync(
+      path.join(xdgConfigHome, "skills-manager", "config.json"),
+      JSON.stringify({
+        version: 1,
+        roots: [{ name: "public", path: root, visibility: "public" }],
+        agents: ["claude-code"],
+      }),
+    );
+    const shim = path.join(base, "skills");
+    const log = path.join(base, "skills.log");
+    fs.writeFileSync(shim, shimScript(home, log), { mode: 0o755 });
+
+    const vars: Record<string, string | undefined> = {
+      SKILLS_BIN: shim,
+      SKILLS_AGENTS: "claude-code",
+      SKILLS_AUDIT_REPO_COVERAGE: "0",
+      HERMES_HOME: undefined,
+    };
+    const saved = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+    const assign = (values: Record<string, string | undefined>): void => {
+      for (const [k, v] of Object.entries(values)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    };
+    assign(vars);
+    try {
+      const out = await runUpstream(
+        { home, xdgConfigHome, machineName: "test", clock: { now: () => "2026-07-10T00:00:00.000Z" } },
+        { json: true, prune: false, yes: false, fix: false, args: ["sync"] },
+      );
+      const argv = fs.readFileSync(log, "utf8").trim().split("\n");
+      return { argv, removed: (out.json as { removed: unknown }).removed };
+    } finally {
+      assign(saved);
+    }
+  }
+
+  function makeHome(): string {
+    const home = path.join(base, "home");
+    fs.mkdirSync(path.join(home, ".agents", "skills", "stale"), { recursive: true });
+    fs.mkdirSync(path.join(home, ".claude", "skills"), { recursive: true });
+    fs.symlinkSync("../../.agents/skills/stale", path.join(home, ".claude", "skills", "stale"));
+    return home;
+  }
+
+  test("a lingering canonical dir gets an all-agent removal, so update cannot re-place it", async () => {
+    const home = makeHome();
+    const { argv, removed } = await sync(home);
+
+    expect(argv).toEqual(["list -g --json", "remove -g stale -a claude-code -y", "remove -g stale -y", "update"]);
+    expect(removed).toEqual(["stale"]);
+    expect(fs.existsSync(path.join(home, ".agents", "skills", "stale"))).toBe(false);
+    expect(fs.lstatSync(path.join(home, ".claude", "skills", "stale"), { throwIfNoEntry: false })).toBeUndefined();
+  });
+
+  test("when Hermes holds the name, removal stays narrowed and Hermes is untouched", async () => {
+    const home = makeHome();
+    const hermesEntry = path.join(home, ".hermes", "skills", "stale");
+    fs.mkdirSync(hermesEntry, { recursive: true });
+    fs.writeFileSync(path.join(hermesEntry, "SKILL.md"), "hermes-owned\n");
+
+    const { argv } = await sync(home);
+
+    expect(argv).toEqual(["list -g --json", "remove -g stale -a claude-code -y", "update"]);
+    expect(fs.readFileSync(path.join(hermesEntry, "SKILL.md"), "utf8")).toBe("hermes-owned\n");
   });
 });
 
