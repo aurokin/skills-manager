@@ -15,7 +15,7 @@ refresh evidence when an agent changes its discovery paths or invocation model.
   `firstParty` means "has a first-party per-dialect frontmatter render channel";
   a renderer dialect without it is deliberate symlink-only (ADR 0016).
 - `optIn`: excluded from the default enabled set; machines enable via config
-  `agents`/`optInAgents` (hermes, agent variants).
+  `agents`/`optInAgents` (hermes, agent variants, agents not in daily use).
 - `unscopedOwnDir`: when enabled, the agent receives unscoped skills in its own
   dir (agents that read neither the shared nor the claude dir; ADR 0016).
 - `probeCli`: binary name for the gate-version drift probe, overriding the

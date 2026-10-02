@@ -88,6 +88,7 @@
     },
     "github-copilot": {
       "skillsSupport": "supported",
+      "optIn": true,
       "reads": ["copilot", "shared"],
       "maybeReads": [],
       "ownDir": "copilot",
@@ -110,6 +111,7 @@
     },
     "gemini-cli": {
       "skillsSupport": "supported",
+      "optIn": true,
       "reads": ["gemini", "shared"],
       "maybeReads": [],
       "ownDir": "gemini",
@@ -169,6 +171,7 @@
     },
     "cursor": {
       "skillsSupport": "supported",
+      "optIn": true,
       "reads": ["shared", "cursor", "claude", "codex"],
       "maybeReads": [],
       "ownDir": "cursor",
@@ -209,6 +212,7 @@
     },
     "droid": {
       "skillsSupport": "supported",
+      "optIn": true,
       "reads": ["factory", "shared"],
       "maybeReads": [],
       "ownDir": "factory",

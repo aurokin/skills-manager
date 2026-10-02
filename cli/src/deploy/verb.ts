@@ -36,7 +36,7 @@ import { auditRepoSkillCoverage, loadCoverageManifest, makeGitEnumerator } from 
 /** compute_skills_agents (ported from the retired lib/agents.sh): $SKILLS_AGENTS split on
  *  whitespace, else the standard agent set. Exported: the upstream-sync verb shares it,
  *  exactly as the two retired bash scripts shared lib/agents.sh. */
-export const STANDARD_AGENTS = ["codex", "opencode", "gemini-cli", "github-copilot", "claude-code"];
+export const STANDARD_AGENTS = ["codex", "opencode", "claude-code"];
 export const HERMES_AGENT_ID = "hermes-agent";
 export function computeSkillsAgents(): string[] {
   const env = process.env.SKILLS_AGENTS;

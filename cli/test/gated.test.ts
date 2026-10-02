@@ -73,17 +73,9 @@ const ALL_ENABLED: MachineConfig = { version: 1, roots: [] }; // default = suppo
 describe("solveGated — placement matrix", () => {
   test("unscoped: only gate-honoring agents, each a rendered tree in its own dir", () => {
     const r = solvePlacements(gatedDesired("fleet-update"), ALL_ENABLED, reg());
-    // Gate-honoring agents in the real registry (frontmatter or companion); no-gate
-    // agents (gemini-cli, opencode, antigravity) are excluded.
-    expect(r.placements.map((p) => p.dir).sort()).toEqual([
-      "claude",
-      "codex",
-      "copilot",
-      "cursor",
-      "factory",
-      "grok",
-      "pi",
-    ]);
+    // Default-enabled gate-honoring agents in the real registry (frontmatter or
+    // companion); no-gate agents (opencode, antigravity) are excluded.
+    expect(r.placements.map((p) => p.dir).sort()).toEqual(["claude", "codex", "grok", "pi"]);
     expect(r.placements.every((p) => p.kind === "rendered" && p.gated === true)).toBe(true);
     // Never the shared root, never a symlink.
     expect(r.placements.some((p) => p.dir === "shared")).toBe(false);

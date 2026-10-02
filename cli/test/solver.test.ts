@@ -149,7 +149,7 @@ describe("solvePlacements — deny (hard guarantee incl. maybeReads)", () => {
   test("deny antigravity forbids its maybe-read of the gemini dir; gemini-cli unreachable", () => {
     const r = solvePlacements(
       desired("drive", { scoping: { deny: ["antigravity"] } }),
-      defaultConfig,
+      { ...defaultConfig, optInAgents: ["gemini-cli"] },
       reg(),
     );
     for (const p of r.placements) {

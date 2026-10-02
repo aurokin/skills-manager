@@ -122,9 +122,11 @@ cd cli && SKILLS_AUDIT_REPO_COVERAGE=0 bun src/cli.ts upstream sync
 
 - `codex`
 - `opencode`
-- `gemini-cli`
-- `github-copilot`
 - `claude-code`
+
+`github-copilot`, `gemini-cli`, `cursor`, and `droid` are registry opt-in agents:
+`plan`/`apply` place skills for them only on machines that list them in
+`optInAgents`.
 
 Override the list to scope a run to a subset of agents, or to opt into
 additional agents like Hermes (see below).
@@ -142,7 +144,7 @@ There are two separate target ids and control planes:
 For upstream sync, include `hermes-agent` in `SKILLS_AGENTS`:
 
 ```bash
-cd cli && SKILLS_AGENTS="codex opencode gemini-cli github-copilot claude-code hermes-agent" \
+cd cli && SKILLS_AGENTS="codex opencode claude-code hermes-agent" \
     bun src/cli.ts upstream sync
 ```
 
