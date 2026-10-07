@@ -424,10 +424,6 @@ Current local skills:
   prose while preserving its meaning. Locally forked; see credits below.
 - `ponytail` — gated (`disable-model-invocation: true`); favors the simplest
   working coding solution. Locally forked; see credits below.
-- `to-issues` — gated (`disable-model-invocation: true`); distilled from the
-  retired mattpocock fork down to the non-native methodology (tracer-bullet
-  vertical slices, HITL/AFK classification, calibration questions), writing
-  blockers-first into the connected tracker via MCP
 - `unslop` — gated (`disable-model-invocation: true`); removes AI
   writing patterns. Locally forked; see credits below.
 

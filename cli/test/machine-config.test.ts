@@ -139,9 +139,9 @@ describe("loadMachineConfig", () => {
     writeMachineConfig(sandbox, {
       version: 1,
       roots: [{ name: "public", path: "~/x", visibility: "public" }],
-      excludeLocalSkills: ["agents-md", "to-issues"],
+      excludeLocalSkills: ["agents-md", "bro"],
     });
-    expect(loadMachineConfig(sandbox.env, reg()).excludeLocalSkills).toEqual(["agents-md", "to-issues"]);
+    expect(loadMachineConfig(sandbox.env, reg()).excludeLocalSkills).toEqual(["agents-md", "bro"]);
 
     for (const [bad, msg] of [
       ["agents-md", /must be a list/],
