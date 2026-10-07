@@ -287,25 +287,12 @@ Current project families:
 
 ### Notable catalog changes
 
-**Impeccable replaces Anthropic `frontend-design`.** The global catalog now
-installs [`pbakaus/impeccable@impeccable`](https://impeccable.style/) instead of
-`anthropics/skills@frontend-design`. Impeccable v2.0 replaced the old skill with
-a single `/impeccable` namespace.
+The global upstream catalog installs `diffwarden`, `tmux`, and `agent-browser`.
+`web-design-guidelines` belongs to the React project family and is installed by
+`skm deploy <dir> --family react`, alongside the React and React Native skills.
 
-After you run `skm upstream sync`:
-
-- `frontend-design` is removed from `~/.agents/skills` and `~/.claude/skills`
-  if it was installed by this workflow
-- `impeccable` is added when missing
-
-If you still want the old skill name on disk, add `frontend-design` to
-`preserveGlobalSkillNames` in `.skills.local.json`. That only blocks stale
-removal; it does not reinstall the Anthropic package.
-
-`pbakaus/impeccable` is listed in `upstream-coverage.json` so installs are
-audited for upstream drift. The repo ships the same skill under many agent
-paths (`.cursor/skills/impeccable`, `skill/SKILL.md`, and others); enumeration
-dedupes by frontmatter `name: impeccable`, so only the curated skill is tracked.
+`aurokin/diffwarden` is listed in `upstream-coverage.json` so sync audits its
+full upstream skill set for catalog drift.
 
 ## Personal Overlay
 
