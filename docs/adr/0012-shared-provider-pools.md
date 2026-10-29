@@ -108,3 +108,54 @@ pool without copying files.
   outlives any one skill), at the cost that deleting the *last* skill
   in a root leaves the pool behind — acceptable; it is source, not a
   deployment.
+
+## Background: the consult design
+
+The consult contract this ADR extracts was designed and probed before the
+split. Its content lives in the private overlay; the reasoning is kept here.
+
+- **Contract.** A consult hands over a decision, not a task; the caller
+  stays the owner. Triggers: committing to a consequential approach, the
+  same error surviving a second distinct fix, and finishing work the
+  caller cannot verify itself. The decision brief has four hard
+  requirements: the situation; the options with the caller's leaning
+  *and* the strongest case against it; verbatim evidence, never
+  summarized; and one decision-shaped question that asks for a falsifier.
+  Advice is evidence, not orders: the caller's own evidence wins and
+  conflicts are surfaced.
+- **Risks and mitigations.** Garbage-brief ratification (a caller curates
+  evidence mid-mistake and a stronger model blesses the misframing) is
+  countered by the mandatory counter-case field and the verbatim-evidence
+  rule. Over-consulting (the decision-point trigger removes the user as a
+  throttle, on the most expensive tier) is countered by one consult per
+  decision, never a consult about a consult, plus an explicit
+  do-not-consult list.
+- **Native advisor.** claude-code has a native advisor that sees the full
+  transcript, which a CLI consult cannot; it must never round-trip a
+  consult through a provider CLI.
+- **Advisor ≥ executor.** At design time the matrix was one cell (codex consults
+  Claude opus, or fable for high stakes). If grok becomes a consumer, the
+  advisor must be at least as capable as the executor; a peer model is a
+  second opinion, not an advisor.
+- **Decomposition rule.** A capability stays inside orchestrate while it
+  is still "engage a provider CLI from within a task" through the same
+  providers and safety gate (review panels, cost routing). It becomes a
+  standalone skill only when both its trigger vocabulary and its
+  infrastructure are disjoint (model benchmarking, probably). Split
+  triggers: the description needs a third distinct intent clause,
+  mis-activation is observed, or the body passes about 250 lines despite
+  progressive disclosure. Precondition for any split: shared providers in
+  skm first, which is this ADR.
+- **Live probe facts (codex consulting Claude, July 2026).** A consult
+  brief run to completion took 720 s, exit 0, so Claude runs need a timeout
+  measured in minutes, not seconds. Claude writes stdout only at
+  completion, so a killed run leaves both the report and stderr empty;
+  empty report plus empty stderr means an infrastructure kill, never "no
+  answer", and one retry after such a kill does not count against the
+  one-consult cap. The completed run returned a 236-byte non-answer
+  because opus spawned its own multi-agent workflow and replied before it
+  finished; `--disallowedTools "Edit Write NotebookEdit Bash"` does not
+  block that. Consult runs therefore add the spawner tools
+  (`--disallowedTools "Edit Write NotebookEdit Bash Agent Workflow Task"`,
+  which left the session no way to spawn a subagent) and the brief says to
+  answer directly in a single pass.

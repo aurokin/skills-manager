@@ -20,9 +20,9 @@ precedent exists; skills just never used it.
 
 The design behind this ADR went through two full adversarial review
 rounds (5 lenses + synthesis each, the second verifying the first) plus a
-targeted review of the posture mechanism; the full design lives in the
-"Composed skills + orchestrate" Linear milestone description. This ADR
-records the architectural decisions.
+targeted review of the posture mechanism. This ADR records the
+architectural decisions; spec details that sit below ADR level are kept
+in [Spec details](#spec-details) at the end.
 
 ## Decision
 
@@ -174,3 +174,52 @@ deterministic and reviewable.
   `apply --prune`): a refused create does not halt prunes, and a one-shot
   prune could otherwise leave a consumer with neither the old nor the new
   skill.
+
+## Spec details
+
+Carried over from the design spec this ADR was written from, where the
+sections above do not already state them.
+
+- **Build-time validation of `skill.yaml`:** unique dimension keys;
+  non-empty candidate lists; every candidate's provider resolves and its
+  model appears in that provider's frontmatter; no dimension lists the
+  same provider twice; each consumer's registry entry has
+  `skillsSupport: "supported"`; every declared consumer has a non-empty
+  description (it is the loader's activation trigger, so omitting it
+  silently disables the skill); `posture` is `sandboxed` or `yolo`; posture
+  markers are well formed across template, provider, and consumer files.
+  A provider file no dimension references is a warning. Authoring
+  checklist (not machine-checked): each consumer description mentions
+  every dimension its rendered table emits.
+- **Rendered body skeleton:** (1) self-abort guard naming the consumer;
+  (2) delegate-or-not gate: static core (don't delegate what is faster
+  in context, code review goes to diffwarden, and a data-egress rule:
+  delegation ships everything the child reads to that provider's API, so
+  secret-bearing or private-root content needs the user's explicit OK per
+  provider) plus `{{consumer_gate}}`; (3) posture-compiled safety gate,
+  ending with "read `references/<provider>.md` before building a command;
+  it is the contract"; (4) `{{routing_table}}`; (5) shared mechanics:
+  artifact dir, prompt file, report file, verify-before-relay, and
+  provider-failure fallback; (6) `{{consumer_appendix}}`. Slots:
+  `{{consumer}}`, `{{consumer_gate}}`, `{{routing_table}}`,
+  `{{consumer_appendix}}`, `{{provider_clis}}`.
+- **What survives a `yolo` compile:** anti-recursion,
+  verify-before-relay, worktree isolation for implementation runs,
+  prompt-stated boundaries for computer-use runs, the data-egress rule,
+  the artifact-dir / report-file pattern, exit-status completion, timeout
+  truths, model tiering, the self-abort guard, the delegate-or-not gate,
+  the diffwarden carve-out, and provider-failure fallback. Subagent-kill
+  flags (`--no-subagents`, `--disallowed-tools "Agent"`) are
+  anti-recursion controls, not permission friction, so they stay outside
+  posture blocks. `yolo` drops only the read-only-boundary mandate and the
+  confirm-before-full-access gate.
+- **Test axes:** goldens under `cli/test/goldens/composed/<fixture>/` as
+  `<consumer>[.<posture>].golden` (posture only for posture-bearing
+  fixtures) cover self-exclusion, the self-was-rank-1 note, fallback
+  chains, a provider referenced only as a fallback (its reference still
+  ships), gate/appendix present and absent, `{{provider_clis}}` expansion,
+  and adopting an unowned on-disk tree that matches the expected render.
+  Unit tests cover the validation matrix, the state fence, plan-hash
+  sensitivity to dimension, provider-body, and posture edits, the
+  collision guards, and the doctor private-leak finding for a copied
+  composed tree.

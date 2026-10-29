@@ -102,6 +102,10 @@ stale-skill removal runs. Its `preserveGlobalSkillNames` protects named
 handmade global skills from stale removal without adding them to the resolved
 managed install set.
 
+Known issue: the `skills` CLI's stale removal can delete skm-owned placements
+whose names were once upstream skills. Run `skm apply` after
+`skm upstream sync` until this is fixed (see [docs/backlog.md](docs/backlog.md)).
+
 Exclusion-override behavior, resolved repo summaries, and the `^` full-coverage
 marker are documented in [docs/exclude-overrides.md](docs/exclude-overrides.md).
 The `^` marker means the final resolved set covers all current upstream skills
