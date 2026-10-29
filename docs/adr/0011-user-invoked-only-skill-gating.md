@@ -16,9 +16,8 @@ gates through a different mechanism entirely.
 Every claim below was probed live on koopa (10-agent research workflow
 `wf_a88d05f6-9b9`, 2026-07-11: two-dummy probes — one gated skill, one
 control — per agent) plus a follow-up companion-file probe and 3-agent
-vendor-file research pass (2026-07-12). The full matrix lives in the
-"Gated skills + fleet-update" Linear milestone; the registry entries
-added by this ADR cite it per agent.
+vendor-file research pass (2026-07-12). The registry entries added by
+this ADR record the per-agent evidence, probed version, and probe date.
 
 Findings that shape the design:
 
