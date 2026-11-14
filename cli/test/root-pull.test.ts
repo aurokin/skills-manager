@@ -144,6 +144,16 @@ test("plan and apply pull first; --no-pull and apply --plan read the checkout as
   expect(placed()).toBe(true);
 });
 
+test("a plain folder inside an unrelated checkout never pulls that checkout", () => {
+  const plain = path.join(rootDir, "untracked-skills");
+  makeSkill(plain, "mine");
+  publish("beta");
+  const before = git(rootDir, "rev-parse", "HEAD");
+  const [pull] = pullRoots(sb.env, [{ name: "plain", path: plain, visibility: "private" }]);
+  expect(pull).toMatchObject({ status: "skipped", reason: "not a git checkout" });
+  expect(git(rootDir, "rev-parse", "HEAD")).toBe(before);
+});
+
 test("roots are pulled even when the config needs registry changes the pull brings", () => {
   writeMachineConfig(sb, { version: 1, roots: [root], agents: ["agent-only-upstream"] });
   publish("beta");

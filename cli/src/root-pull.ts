@@ -41,7 +41,10 @@ export function pullRoots(env: SkmEnv, roots: Root[]): RootPull[] {
     if (!fs.existsSync(r.path)) return { ...base, status: "skipped", reason: "missing on disk" };
     const git: Git = (args) => runGit(r.path, args);
     const top = git(["rev-parse", "--show-toplevel"]);
-    if (!top.ok) return { ...base, status: "skipped", reason: NOT_GIT };
+    // A plain folder nested in an unrelated repo (e.g. a dotfiles home) is not git-backed.
+    if (!top.ok || !git(["ls-files", "--", "."]).stdout.trim()) {
+      return { ...base, status: "skipped", reason: NOT_GIT };
+    }
     const key = top.stdout.trim();
     let result = byCheckout.get(key);
     if (!result) {
