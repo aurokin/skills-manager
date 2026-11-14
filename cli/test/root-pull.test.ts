@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { runApply } from "../src/apply";
 import { runGit } from "../src/env";
 import { runPlan } from "../src/plan";
-import { pullRoots } from "../src/root-pull";
+import { pullConfiguredRoots, pullRoots } from "../src/root-pull";
 import type { Root, VerbOptions } from "../src/types";
 import { makeSandbox, makeSkill, type Sandbox, writeMachineConfig } from "./util";
 
@@ -142,4 +142,10 @@ test("plan and apply pull first; --no-pull and apply --plan read the checkout as
   const applied = await runApply(sb.env, opts());
   expect((applied.json as { rootPulls: { status: string }[] }).rootPulls[0]!.status).toBe("current");
   expect(placed()).toBe(true);
+});
+
+test("roots are pulled even when the config needs registry changes the pull brings", () => {
+  writeMachineConfig(sb, { version: 1, roots: [root], agents: ["agent-only-upstream"] });
+  publish("beta");
+  expect(pullConfiguredRoots(sb.env).map((p) => p.status)).toEqual(["updated"]);
 });

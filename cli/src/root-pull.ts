@@ -4,10 +4,8 @@
 // skipped with a reason and read as-is; pulling never fails the verb.
 
 import * as fs from "node:fs";
-import { registryPath } from "./context";
 import type { GitResult, SkmEnv } from "./env";
-import { loadMachineConfig } from "./machine-config";
-import { loadRegistry } from "./registry";
+import { loadConfiguredRoots } from "./machine-config";
 import type { Root } from "./types";
 
 export interface RootPull {
@@ -30,8 +28,7 @@ const NOT_GIT = "not a git checkout";
 /** Pull every root in the machine config; [] when the env has no git runner. */
 export function pullConfiguredRoots(env: SkmEnv): RootPull[] {
   if (!env.git) return [];
-  const config = loadMachineConfig(env, loadRegistry(registryPath()));
-  return pullRoots(env, config.roots);
+  return pullRoots(env, loadConfiguredRoots(env));
 }
 
 /** Fast-forward each root; roots sharing one checkout are pulled once. */
