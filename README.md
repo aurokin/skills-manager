@@ -55,8 +55,11 @@ bun src/cli.ts plan
 bun src/cli.ts apply
 ```
 
-`plan` is read-only. `apply` creates or updates desired placements; stale owned
-placements are removed only with `apply --prune`.
+`plan` does not change placements. `apply` creates or updates desired placements; stale owned
+placements are removed only with `apply --prune`. Both first fast-forward each
+git-backed root (this repo and any overlay clones) to its upstream; dirty,
+diverged, off-default-branch or offline roots are skipped with a warning and
+read as checked out. Pass `--no-pull` to skip pulling.
 
 ## After Renaming an Existing Checkout
 

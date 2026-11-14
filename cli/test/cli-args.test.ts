@@ -75,3 +75,9 @@ test("deploy-only flags are rejected on other verbs (no silent dry-run on apply)
   expect(() => parseArgs(["plan", "--family", "expo"])).toThrow(/unknown flag: --family/);
   expect(() => parseArgs(["apply", "--all-families"])).toThrow(/unknown flag: --all-families/);
 });
+
+test("--no-pull is accepted on plan and apply only", () => {
+  expect(parseArgs(["plan", "--no-pull"]).opts.noPull).toBe(true);
+  expect(parseArgs(["apply", "--no-pull"]).opts.noPull).toBe(true);
+  expect(() => parseArgs(["status", "--no-pull"])).toThrow(/unknown flag: --no-pull/);
+});

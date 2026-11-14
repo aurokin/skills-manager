@@ -50,6 +50,34 @@ export interface SkmEnv {
    * string reads as unset. Absent → no variable is treated as set.
    */
   envVar?: (name: string) => string | undefined;
+  /**
+   * Git runner used to fast-forward git-backed roots before plan/apply. Injected so
+   * tests opt in with temp repos and never fetch or move the real checkout. Absent →
+   * roots are read as checked out (no pulling).
+   */
+  git?: (cwd: string, args: string[]) => GitResult;
+}
+
+/** Outcome of one `git -C <cwd> …` invocation. */
+export interface GitResult {
+  ok: boolean;
+  stdout: string;
+  stderr: string;
+}
+
+// Safety net for a fetch stuck on an unresponsive remote; offline hosts fail fast.
+const GIT_TIMEOUT_MS = 60_000;
+
+/** Run git non-interactively (no credential prompts) in `cwd`. */
+export function runGit(cwd: string, args: string[]): GitResult {
+  const out = spawnSync("git", ["-C", cwd, ...args], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+    timeout: GIT_TIMEOUT_MS,
+  });
+  if (out.error) return { ok: false, stdout: "", stderr: out.error.message };
+  return { ok: out.status === 0, stdout: out.stdout ?? "", stderr: out.stderr ?? "" };
 }
 
 /** Production environment: real home, process env, wall-clock, real hostname. */
@@ -64,6 +92,7 @@ export function realEnv(): SkmEnv {
     tpromptProbe: () => binaryOnPath("tprompt"),
     agentVersionProbe: (agentId, probeCli) => probeAgentVersion(agentId, probeCli),
     envVar: (name) => process.env[name] || undefined,
+    git: runGit,
   };
 }
 
