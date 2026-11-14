@@ -345,8 +345,8 @@ from `composed/_providers/`; local `SKILL.md` frontmatter may declare gating and
 ## 8. CLI surface
 
 ```
-skm plan     [--json]              # exit 0 clean / 2 changes pending
-skm apply    [--json] [--plan f] [--prune] [--yes]
+skm plan     [--json] [--no-pull]  # fast-forward git roots; exit 0 clean / 2 changes pending
+skm apply    [--json] [--no-pull] [--plan f] [--prune] [--yes]
 skm status   [--json]              # desired vs state vs disk; drift classes
 skm doctor   [--json] [--fix]      # leaks, broken links, registry contradictions,
                                    # deny-guarantee verification, env-var suggestions
@@ -364,11 +364,19 @@ Project-family deploys are now the `skm deploy` verb (ADR 0014 decision 3);
 the bash `deploy-project-skills.sh` path was retired at the ADR 0014 final
 commit (§10, phase 6).
 
-Conventions (ADRs 0006 and 0014): `plan` never mutates; `apply --plan` executes
+Conventions (ADRs 0006 and 0014): `plan` never mutates placements; `apply --plan` executes
 exactly the reviewed plan; exit codes 0/1/2; `--json` on every verb;
 append-only audit log; managed `apply` deletion is restricted to state-owned
 artifacts. Upstream sync has a separate catalog/skills-CLI ownership model and
 may remove stale global installs; Hermes remains explicitly add-only.
+
+Before computing anything, `plan` and fresh `apply` fast-forward each git-backed
+root to its upstream (`--no-pull` opts out; `apply --plan` never pulls). Pulling
+is ff-only and never merges, rebases, resets or stashes: a root with uncommitted
+tracked changes, local commits, a detached HEAD, a non-default branch, no
+upstream, or a failed fetch is skipped with a reason and read as checked out.
+Each root's outcome is reported as `rootPulls` (`updated` / `current` /
+`skipped` + `reason`).
 
 ## 9. Privacy guards (enforced in code, not convention)
 

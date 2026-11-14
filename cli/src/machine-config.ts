@@ -124,6 +124,23 @@ export function loadMachineConfig(env: SkmEnv, reg: Registry): MachineConfig {
   return normalizeConfig(env, raw, reg);
 }
 
+/**
+ * Just the registered roots, without registry validation: root pulling runs
+ * before the registry is loaded because a pull may update the registry itself.
+ * An unreadable config yields [] so the full load reports the real error.
+ */
+export function loadConfiguredRoots(env: SkmEnv): Root[] {
+  const p = configPath(env);
+  if (!fs.existsSync(p)) return [{ name: "public", path: repoRoot(), visibility: "public" }];
+  try {
+    const raw = JSON.parse(fs.readFileSync(p, "utf8")) as MachineConfig;
+    if (!Array.isArray(raw.roots)) return [];
+    return raw.roots.map((r) => ({ ...r, path: expandTilde(env, r.path) }));
+  } catch {
+    return [];
+  }
+}
+
 /** A registered root missing on disk is a hard abort (never "delete its skills"). */
 export function assertRootsExist(config: MachineConfig): void {
   for (const r of config.roots) {

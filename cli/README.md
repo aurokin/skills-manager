@@ -64,8 +64,8 @@ the resolved catalog/preserve set and sweeps dangling global symlinks.
 ## Verbs
 
 ```
-skm plan    [--json]                     desired vs state; exit 2 if changes pending
-skm apply   [--json] [--plan <f>] [--prune] [--yes]
+skm plan    [--json] [--no-pull]         fast-forward git roots, then desired vs state; exit 2 if changes pending
+skm apply   [--json] [--no-pull] [--plan <f>] [--prune] [--yes]
 skm status  [--json]                     drift: missing|stale|modified|foreign|unsafe
 skm doctor  [--json] [--fix]             leaks, broken links, deny-guarantee checks
 skm explain <skill> [--json]             source, scoping, placements, bleed
@@ -106,9 +106,21 @@ preserve-lists; the full-coverage repo audit; and the `$SKILLS_AGENTS` /
 env semantics. Sync is latest-wins (no pinning); upstream installs are never
 adopted into `state.json`.
 
-Conventions: `plan` never mutates. `apply --plan <file>` runs exactly the
+Conventions: `plan` never mutates placements. `apply --plan <file>` runs exactly the
 reviewed plan (refused if the desired-state hash changed). Every verb supports
 `--json` (stable shapes); a TTY without `--json` gets human-pretty output.
+
+**Root pulls.** `plan` and `apply` first fast-forward every git-backed root to
+its upstream, so a skills PR merged on GitHub is placed without a manual
+`git pull`. It is fast-forward only (never merge, rebase, reset or stash). A
+root is skipped, with a warning naming the reason, and read as checked out when
+it has uncommitted tracked changes, local commits not on its upstream, a
+detached HEAD, a non-default branch, or no upstream, or when the fetch fails
+(offline or auth). Skips never fail the verb. Plain-folder roots are read as-is.
+Each root's outcome appears in human output and as `rootPulls` in `--json`
+(`status`: `updated` with `from`/`to`/`commits`, `current`, or `skipped` with
+`reason`). Use `--no-pull` for offline or deterministic runs; `apply --plan`
+never pulls, since the reviewed plan is the contract.
 
 **Exit codes** (Terraform detailed-exitcode): `0` clean · `1` error ·
 `2` changes pending / drift.

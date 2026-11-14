@@ -41,6 +41,7 @@ export function parseArgs(argv: string[]): ParsedInvocation {
   let prune = false;
   let yes = false;
   let fix = false;
+  let noPull = false;
   let planFile: string | undefined;
   let agentsHome: string | undefined;
   let out: string | undefined;
@@ -65,6 +66,7 @@ export function parseArgs(argv: string[]): ParsedInvocation {
     else if (a === "--prune") prune = true;
     else if (a === "--yes") yes = true;
     else if (a === "--fix") fix = true;
+    else if ((verb === "plan" || verb === "apply") && a === "--no-pull") noPull = true;
     else if (a === "--plan") {
       // A `--plan` flag with no operand (or immediately followed by another flag)
       // must be a usage error, never a silent fall-through to the fresh-plan path
@@ -131,15 +133,16 @@ export function parseArgs(argv: string[]): ParsedInvocation {
 
   return {
     verb,
-    opts: { json, prune, yes, planFile, fix, agentsHome, out, families, allFamilies, agentsList, dryRun, listFamilies, args },
+    opts: { json, prune, yes, planFile, fix, noPull, agentsHome, out, families, allFamilies, agentsList, dryRun, listFamilies, args },
   };
 }
 
 const USAGE = `skm — curated skills and agent-definition manager
 
 Usage:
-  skm plan    [--json]                     desired vs state; exit 2 if changes pending
-  skm apply   [--json] [--plan <f>] [--prune] [--yes]
+  skm plan    [--json] [--no-pull]         fast-forward git roots, then desired vs state; exit 2 if changes pending
+  skm apply   [--json] [--no-pull] [--plan <f>] [--prune] [--yes]
+                                           fast-forward git roots (not with --plan), then place
   skm status  [--json]                     drift: missing|stale|modified|foreign|unsafe
   skm doctor  [--json] [--fix]             leaks, broken links, deny-guarantee checks
   skm review  [--json] [--out <f>]         skill-surface review: HTML page (or --json model)

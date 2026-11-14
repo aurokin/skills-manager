@@ -21,6 +21,7 @@ import { hashGatedTree, renderGatedTree, writeGatedTree } from "./gated";
 import { createDirectoryLink } from "./links";
 import { buildPlan, planHashOf } from "./plan";
 import { privacyViolation } from "./privacy";
+import { pullConfiguredRoots, renderRootPulls } from "./root-pull";
 import { loadRegistry } from "./registry";
 import { dialectForDir, hashContent, renderSkill, renderedHash, treeHashOf } from "./render";
 import { resolveDesiredState } from "./resolve";
@@ -49,6 +50,9 @@ import { ExitCode } from "./types";
 
 /** Verb entry. With --plan, refuses if the desired-state hash changed since planning. */
 export async function runApply(env: SkmEnv, opts: VerbOptions): Promise<VerbOutcome> {
+  // A reviewed --plan is the contract: never move roots under it. Otherwise pull
+  // first so the fresh plan places what was merged upstream.
+  const rootPulls = opts.planFile || opts.noPull ? [] : pullConfiguredRoots(env);
   const registry = loadRegistry(registryPath());
   const config = loadMachineConfig(env, registry);
   const plan = opts.planFile
@@ -70,7 +74,11 @@ export async function runApply(env: SkmEnv, opts: VerbOptions): Promise<VerbOutc
     refused.length === 0 && plan.foreign.length === 0 && plan.unsafe.length === 0 && !prunePending;
   const exitCode = converged ? ExitCode.CLEAN : ExitCode.PENDING;
 
-  return { exitCode, json: summary.json, human: summary.text };
+  return {
+    exitCode,
+    json: { ...(summary.json as object), rootPulls },
+    human: [...renderRootPulls(rootPulls), summary.text].join("\n"),
+  };
 }
 
 /** Recompute a plan against the live machine (default apply path). */

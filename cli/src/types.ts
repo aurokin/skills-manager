@@ -702,6 +702,8 @@ export interface VerbOptions {
   yes: boolean;
   planFile?: string;
   fix: boolean;
+  /** `plan`/`apply --no-pull`: read roots as checked out; skip the fast-forward. */
+  noPull?: boolean;
   /** Legacy in-repo agents_home for `adopt custom-agents` (--agents-home). */
   agentsHome?: string;
   /** `review --out <path>`: explicit HTML output path (privacy-guarded). */

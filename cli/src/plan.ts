@@ -1,5 +1,5 @@
 // `skm plan` — compute desired vs state vs disk and emit a reviewable plan.
-// Never mutates. Actions: create (link|render) · adopt · update · prune · noop.
+// Never mutates placements (it may fast-forward git roots first; see root-pull.ts). Actions: create (link|render) · adopt · update · prune · noop.
 // Foreign targets, unsafe (privacy) refusals, unreachable agents and bleed are
 // reported alongside the actions. Owned by the plan/resolve team.
 
@@ -12,6 +12,7 @@ import { gateHonored, gatedExposureRemedy } from "./gated";
 import { type SkmEnv, expandTilde } from "./env";
 import { computeDesiredPlacements } from "./placements";
 import { privacyViolation } from "./privacy";
+import { pullConfiguredRoots, renderRootPulls } from "./root-pull";
 import { dialectForDir, hashContent, renderedHash, treeHashOf } from "./render";
 import { classifyTarget, scanEntry } from "./scan";
 import { artifactKey, findOwner } from "./state";
@@ -40,10 +41,13 @@ import { ExitCode } from "./types";
 
 /** Verb entry: exit 0 when clean, 2 when changes are pending. */
 export async function runPlan(env: SkmEnv, opts: VerbOptions): Promise<VerbOutcome> {
+  // Pull before loading anything so the plan reflects what apply will place.
+  const rootPulls = opts.noPull ? [] : pullConfiguredRoots(env);
   const ctx = loadContext(env);
   const plan = buildPlan(env, ctx.config, ctx.registry, ctx.desired, ctx.state);
   const exitCode: ExitCodeValue = hasPendingChanges(plan) ? ExitCode.PENDING : ExitCode.CLEAN;
-  return { exitCode, json: plan, human: renderPlanHuman(plan) };
+  const human = [...renderRootPulls(rootPulls), renderPlanHuman(plan)].join("\n");
+  return { exitCode, json: { ...plan, rootPulls }, human };
 }
 
 /** Any action other than noop means work is pending. */
